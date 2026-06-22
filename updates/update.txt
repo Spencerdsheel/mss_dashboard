@@ -1,0 +1,18 @@
+Key points:
+
+- Login page still in french, french components in overview and admin page
+- Change the data creation flow of the server to 6 hours
+- Shopmetrics should be replaced with iSN and that should be dynamic where admins can change it
+- The restapi wording should be removed from the KPI cards
+- The “To date” in the date ranges are showing garbage in the KPI cards, every tenant page, basically every place where date range exist.
+- The KPI cards inside a project page is showing null or zero values.
+- The pie chart in every project page is zero and showing no data
+- Verify the bar chart
+- Verify the data of the dashboard to include more charts suitable for the data.
+- The background of the dashboard is too basic or stale we have to set a blurred normal animation which wont overpower the dashboard
+- Admin page:
+    - The dashboard has to be dynamic
+    - currently there is 1 project to 1 tenant, in production a single tenant will have n number of projects, and in that one project may run one month and not on the next month. Basically the projects should be shown based on the dates it was active. (I will have to check the original data of 436 for this)
+    - The admin should be able to control and change every aspect of the dashboard. every minute thing
+    - Manage users should be in a subpage of admin, Run history should be in a different subpage. Password reset flow in login and manage user page
+    - The logic of filters should be like if the first filter is selected, the next filter should only show options which are actually linked to the previous filter

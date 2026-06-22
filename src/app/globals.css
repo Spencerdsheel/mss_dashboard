@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Ventriloc — Mist canvas / Paper cards / Signal Orange accent */
+    --background:          0 0% 94%;   /* Mist    #efefef */
+    --foreground:          0 0% 13%;   /* Carbon  #202020 */
+    --card:                0 0% 100%;  /* Paper   #ffffff */
+    --card-foreground:     0 0% 13%;
+    --popover:             0 0% 100%;
+    --popover-foreground:  0 0% 13%;
+    --primary:             0 0% 13%;   /* Carbon  #202020 */
+    --primary-foreground:  0 0% 100%;
+    --secondary:           0 0% 96%;   /* Fog     #f5f5f5 */
+    --secondary-foreground:0 0% 30%;   /* Graphite #4d4d4d */
+    --muted:               0 0% 96%;   /* Fog */
+    --muted-foreground:    0 0% 51%;   /* Slate   #828282 */
+    --accent:              0 0% 91%;   /* Chalk   #e8e8e8 */
+    --accent-foreground:   0 0% 30%;   /* Graphite */
+    --destructive:         0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border:              0 0% 91%;   /* Chalk   #e8e8e8 */
+    --input:               0 0% 91%;
+    --ring:                16 100% 59%; /* Signal Orange #ff682c */
+    --radius:              0.5rem;      /* 8px cards */
+    --brand:               16 100% 59%; /* Signal Orange #ff682c */
+    --brand-foreground:    0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ── Ventriloc utility classes ─────────────────────────────── */
+
+/* KPI display number — Space Grotesk, tight tracking */
+.kpi-number {
+  font-family: var(--font-space-grotesk), ui-sans-serif, system-ui;
+  font-size: 2.25rem;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ventriloc card — Paper surface, 8px radius, ghost elevation */
+.card-ventriloc {
+  background: hsl(var(--card));
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(32,32,32,0.04), 0 4px 12px rgba(32,32,32,0.03);
+  border: 1px solid hsl(var(--border));
+}
+
+/* Sticky top nav */
+.glass-header {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* ── Aurora background ─────────────────────────────────────
+   Three large, heavily-blurred radial-gradient "blobs" fixed
+   behind all content. Each blob is at very low opacity so the
+   overall page still reads as Mist (#efefef / near-white).
+   Cards (.card-ventriloc) are opaque white — blobs never
+   reduce their legibility. The layer is pointer-events:none
+   so it never intercepts clicks.
+   ────────────────────────────────────────────────────────── */
+
+@keyframes aurora-drift-a {
+  0%   { transform: translate(0, 0)    scale(1);    }
+  50%  { transform: translate(3%, 2%)  scale(1.06); }
+  100% { transform: translate(0, 0)    scale(1);    }
+}
+
+@keyframes aurora-drift-b {
+  0%   { transform: translate(0, 0)    scale(1);    }
+  50%  { transform: translate(-2%, 3%) scale(1.04); }
+  100% { transform: translate(0, 0)    scale(1);    }
+}
+
+@keyframes aurora-drift-c {
+  0%   { transform: translate(0, 0)    scale(1);    }
+  50%  { transform: translate(2%, -2%) scale(1.05); }
+  100% { transform: translate(0, 0)    scale(1);    }
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* Blob A — Signal Orange, top-left corner */
+  /* Blob B — warm amber tint, bottom-right corner */
+  /* Blob C — cool soft slate, top-right area */
+  background:
+    radial-gradient(ellipse 70% 55% at 0% 0%,   hsl(16 100% 59% / 0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 65% 60% at 100% 100%, hsl(28 80% 60% / 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 55% 50% at 95% 5%,   hsl(210 20% 70% / 0.05) 0%, transparent 65%);
+  animation:
+    aurora-drift-a 32s ease-in-out infinite alternate,
+    aurora-drift-b 38s ease-in-out infinite alternate,
+    aurora-drift-c 28s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+}
