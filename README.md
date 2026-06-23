@@ -20,7 +20,7 @@ Production-ready, multi-tenant retail execution dashboard platform.
 docker compose up -d
 ```
 
-This starts both PostgreSQL (port 5433) and Redis (port 6379) for local development.
+This starts both PostgreSQL (port 5433) and Redis (port 6380) for local development.
 
 ### 2. Install Dependencies
 
@@ -38,7 +38,7 @@ pip install -r requirements-backend.txt
 
 ```bash
 cp .env.example .env
-# Edit .env if needed (REDIS_URL is already set to redis://localhost:6379/0)
+# Edit .env if needed (REDIS_URL is already set to redis://localhost:6380/0)
 ```
 
 ### 4. Start Backend
@@ -94,8 +94,7 @@ Open http://localhost:3000 and log in with:
 │       ├── extractor.py          # Resource pull orchestration
 │       ├── resources.py          # 12 Shopmetrics resource definitions
 │       ├── transform.py          # Rowset → normalized dataset
-│       ├── transform_local_dummy_db.py  # Persist to Postgres
-│       ├── local_fixtures.py     # Excel workbook loader
+│       ├── persistence.py        # Postgres loader (load_transformed_dataset)
 │       ├── local_dummy_schema.sql
 │       └── dashboard_schema.sql
 │
@@ -158,9 +157,6 @@ RUN_PRODUCTION_SMOKE=1 python -m pytest backend_tests/test_production_smoke.py -
 
 # Run manual data refresh (local fixtures)
 python -m services.ingestion.refresh
-
-# Seed local Shopmetrics DB from Excel workbooks
-python -m services.ingestion.seed_local_dummy_db
 
 # Start Celery worker (use --pool=solo on Windows)
 celery -A services.ingestion.celery_app worker --loglevel=info --pool=solo --concurrency=4
