@@ -1,0 +1,48 @@
+# Local development services for the iSN Dashboard platform.
+#   docker compose up -d
+#
+# Host ports:
+#   - PostgreSQL 5433  -> container 5432  (db shopmetrics_demo, user postgres / admin)
+#   - Redis      6380  -> container 6379  (broker + cache + rate limiter)
+#
+# The dashboard schema (all CREATE ... IF NOT EXISTS) is applied automatically the
+# first time the postgres volume is initialized.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: mss_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: shopmetrics_demo
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./services/ingestion/dashboard_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shopmetrics_demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: mss_redis
+    restart: unless-stopped
+    # Host 6380 maps to the in-container default 6379.
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:

@@ -18,7 +18,7 @@ if settings.environment == "production" and settings.sentry_dsn:
         integrations=[CeleryIntegration()],
     )
 
-redis_url = settings.redis_url or "redis://localhost:6379/0"
+redis_url = settings.redis_url or "redis://localhost:6380/0"
 
 celery_app = Celery(
     "shopmetrics",

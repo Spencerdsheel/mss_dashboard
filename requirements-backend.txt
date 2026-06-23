@@ -1,4 +1,11 @@
 fastapi>=0.115,<1
+# Pin Starlette to 0.x: prometheus-fastapi-instrumentator 5.11 breaks on Starlette 1.x
+# routing (AttributeError: '_IncludedRouter' object has no attribute 'path'). fastapi<1
+# alone allowed Starlette 1.3 to be installed, which 500s every request.
+starlette>=0.40,<1
+# Required by the standalone mock Shopmetrics server (services/api/client_server.py):
+# its OAuth/token + /api/v2/execute endpoints accept form-data.
+python-multipart>=0.0.7,<1
 uvicorn[standard]>=0.30,<1
 pydantic>=2,<3
 pytest>=8,<9
