@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# NOTE: scope these Python build-dir rules to the repo root with a leading
+# slash. A bare `lib/` matches `src/lib/` too and silently dropped the entire
+# frontend shared library from git (it was never committed). Do not un-scope.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -217,4 +220,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Manual
 node_modules/
+.next/
+tsconfig.tsbuildinfo
+next-env.d.ts
