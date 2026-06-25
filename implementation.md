@@ -187,6 +187,51 @@ frontmatter (`name`, `description` = "Use when implementing/reviewing <area> in 
 
 ---
 
+## 8. Sprints 03–07 — Production readiness & core architecture (2026-06-24)
+
+> **Context file for Qwen:** `updates/sprint-03-07-context.md`
+
+### Sprint 03 — Login page cleanup
+**Spec:** `.claude/specs/sprint-03-login-page-cleanup.md`
+Remove all demo/prototype branding. "Prototype Dashboard" → "iSN Dashboard", remove demo
+accounts box, clear input placeholders, add iSN logo. Pure frontend, no backend changes.
+**Exit:** Login page shows "iSN Dashboard" branding, no demo references.
+
+### Sprint 04 — Home page fixes
+**Spec:** `.claude/specs/sprint-04-home-page-fixes.md`
+(a) "Past / Upcoming" → "Ongoing Projects". (b) Visit count badges → "Live"/"Completed".
+(c) Date filter bar (client-side filtering by project date overlap). (d) Dynamic header title
+from new `dashboard.platform_settings` table + admin settings page.
+**Exit:** Home page is filterable, header title is admin-editable, badges show live status.
+
+### Sprint 05 — Admin bug fixes
+**Spec:** `.claude/specs/sprint-05-admin-bug-fixes.md`
+(a) Fix project update losing `visit_count` (missing from RETURNING clause in
+`postgres_repository.py`). (b) Add `client_name` editing to Projects admin page + clarifying
+note on Connections page. (c) Add empty-state message to metrics sidebar.
+**Exit:** Project edits preserve visit count, client_name editable, no blank UI states.
+
+### Sprint 06 — Project page visual fixes
+**Spec:** `.claude/specs/sprint-06-project-page-visuals.md`
+(a) Normalize KPI card heights (Execution Period card). (b) Cap pie chart grid at 2 columns.
+(c) Verify chart data (P3 empty, Visits over Time representation). (d) Gap-fill trend chart
+if needed.
+**Exit:** Uniform card heights, readable pie charts, graceful empty states.
+
+### Sprint 07 — Three-tier role system (MAJOR)
+**Spec:** `.claude/specs/sprint-07-three-tier-roles-design.md`
+Introduce PLATFORM_ADMIN / CLIENT_ADMIN / TENANT_USER. New `companies` table grouping tenants.
+JWT claims extended with `company_id`. Repository queries scoped by role tier. Frontend RBAC
+updated. Migration script for existing users.
+**Exit:** All three roles work end-to-end with proper isolation.
+
+### Roadmap beyond Sprint 07
+- **Sprint 08+** — Plug-and-play API pipeline (abstract provider adapters)
+- **Sprint 09+** — Dynamic chart/visual builder (admin-created charts)
+- These need separate design specs written by Opus before implementation.
+
+---
+
 ## 8. Open items
 - [x] Conda env **name** = `venv` (wired into `conda-guard.sh`, `CLAUDE.md`, the guide).
 - [x] Skills location = project `.claude/skills/` (14 built, one per KB file).
