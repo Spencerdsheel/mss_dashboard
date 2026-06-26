@@ -1,4 +1,4 @@
-import { backendGet, backendPost, backendPatch } from "./backend-api";
+﻿import { backendGet, backendPost, backendPatch } from "./backend-api";
 
 export type AdminTenant = {
   id: string;
@@ -266,5 +266,27 @@ export async function adminUpdateConnection(
       status: patch.status ?? existing.status,
       display_name: "display_name" in patch ? patch.display_name : existing.display_name,
     }
+  );
+}
+
+export async function adminGetSetting(
+  token: string,
+  key: string
+): Promise<{ key: string; value: string }> {
+  return backendGet<{ key: string; value: string }>(
+    `/admin/settings/${key}`,
+    token
+  );
+}
+
+export async function adminUpdateSetting(
+  token: string,
+  key: string,
+  value: string
+): Promise<{ key: string; value: string }> {
+  return backendPatch<{ key: string; value: string }>(
+    `/admin/settings/${key}`,
+    token,
+    { value }
   );
 }

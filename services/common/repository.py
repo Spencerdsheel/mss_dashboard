@@ -75,6 +75,10 @@ class DashboardRepository(Protocol):
 
     async def update_project_metrics(self, project_id: str, metrics: list[dict]) -> list[dict]: ...
 
+    async def get_platform_setting(self, key: str) -> str | None: ...
+
+    async def set_platform_setting(self, key: str, value: str) -> str: ...
+
 
 class InMemoryDashboardRepository:
     """Small Phase 01 repository for auth/RBAC/API wiring tests.
@@ -283,6 +287,14 @@ class InMemoryDashboardRepository:
                 "category": item.get("category"),
             }
         return await self.list_project_metrics(project_id)
+
+    async def get_platform_setting(self, key: str) -> str | None:
+        if key == "site_title":
+            return "iSN"
+        return None
+
+    async def set_platform_setting(self, key: str, value: str) -> str:
+        return value
 
 
 def seed_phase01_repository(password: str = "Demo123!") -> InMemoryDashboardRepository:

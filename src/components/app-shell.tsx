@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -13,10 +13,12 @@ export function AppShell({
   children,
   session,
   projectId,
+  siteTitle = "iSN",
 }: {
   children: ReactNode;
   session: { user: { email?: string | null; name?: string | null; role: "ADMIN" | "CLIENT" } };
   projectId?: string;
+  siteTitle?: string;
 }) {
   const pathname = usePathname();
 
@@ -47,7 +49,7 @@ export function AppShell({
             href="/dashboard"
             className="flex items-center gap-1.5 font-space-grotesk text-sm font-medium tracking-tight text-carbon"
           >
-            iSN
+            {siteTitle}
             <span className="text-signal-orange text-xs leading-none">●</span>
           </Link>
 

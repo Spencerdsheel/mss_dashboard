@@ -140,6 +140,16 @@ CREATE TABLE IF NOT EXISTS dashboard.photo_slot_labels (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS dashboard.platform_settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Seed default site title
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('site_title', 'iSN')
+ON CONFLICT (key) DO NOTHING;
 -- P1.4: Per-project campaign model — variable install slots (1–4)
 CREATE TABLE IF NOT EXISTS dashboard.project_install_slots (
     tenant_id TEXT NOT NULL,

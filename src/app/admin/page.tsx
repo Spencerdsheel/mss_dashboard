@@ -51,6 +51,9 @@ export default async function AdminPage() {
           <Link href="/admin/runs">
             <Button variant="outline">Run History</Button>
           </Link>
+          <Link href="/admin/settings">
+            <Button variant="outline">Settings</Button>
+          </Link>
         </div>
       </div>
 

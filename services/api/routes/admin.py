@@ -89,6 +89,10 @@ class ProjectMetricUpdateRequest(BaseModel):
     metrics: list[ProjectMetricItem]
 
 
+class SettingUpdateRequest(BaseModel):
+    value: str
+
+
 def require_admin_operation(repository: DashboardRepository, method_name: str):
     method = getattr(repository, method_name, None)
     if method is None:
@@ -488,3 +492,28 @@ async def update_project_metrics(
         return await method(project_id, [item.model_dump() for item in request.metrics])
     except ValueError as exc:
         raise NotFoundError(str(exc)) from exc
+
+
+@router.get("/settings/{key}")
+async def get_setting(
+    key: str,
+    _claims=Depends(require_admin_claims),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    method = require_admin_operation(repository, "get_platform_setting")
+    value = await method(key)
+    if value is None:
+        raise NotFoundError(f"Setting '{key}' not found")
+    return {"key": key, "value": value}
+
+
+@router.patch("/settings/{key}")
+async def update_setting(
+    key: str,
+    request: SettingUpdateRequest,
+    _claims=Depends(require_admin_claims),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    method = require_admin_operation(repository, "set_platform_setting")
+    value = await method(key, request.value)
+    return {"key": key, "value": value}

@@ -936,6 +936,24 @@ class PostgresDashboardRepository:
             raise ValueError(f"Project '{project_id}' not found for tenant '{tenant_id}'")
         return project_from_row(dict(row))
 
+    async def get_platform_setting(self, key: str) -> str | None:
+        row = await self._fetch_one(
+            "SELECT value FROM dashboard.platform_settings WHERE key = $1",
+            key,
+        )
+        return row["value"] if row else None
+
+    async def set_platform_setting(self, key: str, value: str) -> str:
+        await self._execute(
+            """
+            INSERT INTO dashboard.platform_settings (key, value, updated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()
+            """,
+            key, value,
+        )
+        return value
+
     async def get_active_user_for_reset(self, email: str) -> dict | None:
         """Resolve an active user by email for the password-reset redeem path.
 

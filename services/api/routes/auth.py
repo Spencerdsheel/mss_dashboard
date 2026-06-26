@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from services.api.dependencies import get_current_claims, get_repository, get_settings
@@ -121,3 +121,26 @@ async def redeem_password_reset(
 
     # Always return the same response — do not reveal success/failure.
     return _REDEEM_GENERIC_RESPONSE
+
+
+# Whitelisted keys that can be read without authentication
+_PUBLIC_SETTING_KEYS = {"site_title"}
+
+
+@router.get("/settings/public/{key}")
+async def get_public_setting(
+    key: str,
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    if key not in _PUBLIC_SETTING_KEYS:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    method = getattr(repository, "get_platform_setting", None)
+    if method is None:
+        defaults = {"site_title": "iSN"}
+        value = defaults.get(key)
+    else:
+        value = await method(key)
+    if value is None:
+        defaults = {"site_title": "iSN"}
+        value = defaults.get(key, "")
+    return {"key": key, "value": value}
