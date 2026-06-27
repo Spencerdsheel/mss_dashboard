@@ -2,6 +2,8 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { revalidateTag } from "next/cache";
 import {
   adminListTenants,
   adminListTenantProjects,
@@ -45,7 +47,7 @@ export async function getProjectsData(): Promise<ProjectsPageData> {
 export async function updateProjectAction(
   tenantId: string,
   projectId: string,
-  data: { name?: string; start_date?: string | null; end_date?: string | null }
+  data: { name?: string; start_date?: string | null; end_date?: string | null; client_name?: string }
 ): Promise<AdminProject> {
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value || "";
@@ -54,5 +56,8 @@ export async function updateProjectAction(
     throw new Error("Not authenticated");
   }
 
-  return adminUpdateProject(token, tenantId, projectId, data);
+  const result = await adminUpdateProject(token, tenantId, projectId, data);
+  revalidatePath("/dashboard");
+  revalidateTag("projects");
+  return result;
 }

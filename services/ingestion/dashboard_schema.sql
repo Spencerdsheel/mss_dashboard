@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS dashboard.projects (
     start_date DATE,
     end_date DATE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (tenant_id, project_id)
 );
 

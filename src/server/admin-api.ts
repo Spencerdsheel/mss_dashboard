@@ -108,6 +108,7 @@ export type AdminProject = {
   start_date: string | null;
   end_date: string | null;
   visit_count: number;
+  client_name: string;
 };
 
 export async function adminListTenantProjects(
@@ -124,7 +125,7 @@ export async function adminUpdateProject(
   token: string,
   tenant_id: string,
   project_id: string,
-  data: { name?: string; start_date?: string | null; end_date?: string | null }
+  data: { name?: string; start_date?: string | null; end_date?: string | null; client_name?: string }
 ) {
   return backendPatch<AdminProject>(
     `/admin/tenants/${tenant_id}/projects/${project_id}`,

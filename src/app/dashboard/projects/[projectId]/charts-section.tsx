@@ -164,28 +164,34 @@ export function ChartsSection({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {metrics.map((m) => (
-              <div
-                key={m.key}
-                className="flex items-center justify-between rounded-lg bg-fog px-3 py-2"
-              >
-                <div>
-                  <div className="text-sm font-medium text-carbon">{m.label}</div>
-                  <div className="text-[11px] text-slate">
-                    {m.category === "target" ? "Target" : "Reference"} · {m.key}
+            {metrics.length === 0 ? (
+              <p className="text-xs text-slate italic py-4">
+                No metrics configured for this project. Add them in Admin → Metrics.
+              </p>
+            ) : (
+              metrics.map((m) => (
+                <div
+                  key={m.key}
+                  className="flex items-center justify-between rounded-lg bg-fog px-3 py-2"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-carbon">{m.label}</div>
+                    <div className="text-[11px] text-slate">
+                      {m.category === "target" ? "Target" : "Reference"} · {m.key}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className="font-space-grotesk text-xl text-carbon"
+                      style={{ letterSpacing: "-0.03em" }}
+                    >
+                      {m.value.toLocaleString()}
+                    </div>
+                    <div className="text-[11px] text-slate">{m.unit}</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div
-                    className="font-space-grotesk text-xl text-carbon"
-                    style={{ letterSpacing: "-0.03em" }}
-                  >
-                    {m.value.toLocaleString()}
-                  </div>
-                  <div className="text-[11px] text-slate">{m.unit}</div>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </div>
       </div>

@@ -907,30 +907,48 @@ class PostgresDashboardRepository:
         name: str | None,
         start_date: str | None,
         end_date: str | None,
+        client_name: str | None = None,
     ) -> Project:
-        """Update mutable project fields (name, start_date, end_date).
+        """Update mutable project fields (name, start_date, end_date, client_name).
 
         Only fields that are non-None are overwritten; existing values are
         preserved via COALESCE so a partial patch is safe.  The WHERE clause
         enforces tenant_id so cross-tenant writes are impossible.
         Raises ValueError when no row matched (project absent or wrong tenant).
+        Uses a CTE to compute visit_count in the same query so the response
+        always carries the correct count.
         """
+        from datetime import date as _date
+        _start = _date.fromisoformat(start_date) if start_date else None
+        _end = _date.fromisoformat(end_date) if end_date else None
+
         row = await self._fetch_one(
             """
-            UPDATE dashboard.projects
-            SET name       = COALESCE($1, name),
-                start_date = COALESCE($2::date, start_date),
-                end_date   = COALESCE($3::date, end_date),
-                updated_at = now()
-            WHERE tenant_id = $4 AND project_id = $5
-            RETURNING tenant_id, project_id, name, slug, client_name,
-                      provider_kind, start_date, end_date
+            WITH updated AS (
+                UPDATE dashboard.projects
+                SET name        = COALESCE($1, name),
+                    start_date  = COALESCE($2, start_date),
+                    end_date    = COALESCE($3, end_date),
+                    client_name = COALESCE($6, client_name),
+                    updated_at  = now()
+                WHERE tenant_id = $4 AND project_id = $5
+                RETURNING *
+            )
+            SELECT u.tenant_id, u.project_id, u.name, u.slug, u.client_name,
+                   u.provider_kind, u.start_date, u.end_date,
+                   COALESCE(
+                       (SELECT COUNT(*) FROM dashboard.visits v
+                        WHERE v.tenant_id = u.tenant_id AND v.project_id = u.project_id),
+                       0
+                   ) AS visit_count
+            FROM updated u
             """,
             name,
-            start_date,
-            end_date,
+            _start,
+            _end,
             tenant_id,
             project_id,
+            client_name,
         )
         if not row:
             raise ValueError(f"Project '{project_id}' not found for tenant '{tenant_id}'")

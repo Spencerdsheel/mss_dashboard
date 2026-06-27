@@ -48,6 +48,7 @@ class DashboardRepository(Protocol):
         name: str | None,
         start_date: str | None,
         end_date: str | None,
+        client_name: str | None = None,
     ) -> "Project": ...
 
     async def list_run_logs(self) -> list[RunLog]: ...
@@ -222,6 +223,7 @@ class InMemoryDashboardRepository:
         name: str | None,
         start_date: str | None,
         end_date: str | None,
+        client_name: str | None = None,
     ) -> Project:
         from dataclasses import replace as dc_replace
         idx = next(
@@ -236,6 +238,7 @@ class InMemoryDashboardRepository:
             name=name if name is not None else existing.name,
             start_date=start_date if start_date is not None else existing.start_date,
             end_date=end_date if end_date is not None else existing.end_date,
+            client_name=client_name if client_name is not None else existing.client_name,
         )
         self.projects = list(self.projects)
         self.projects[idx] = updated

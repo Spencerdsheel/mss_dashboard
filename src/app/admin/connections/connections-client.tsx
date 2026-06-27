@@ -71,6 +71,11 @@ export function ConnectionsClient({ tenants, connections }: ConnectionsClientPro
             Edit display name, status, and base URL for each tenant&apos;s provider connection.
           </p>
         </div>
+        <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
+          <strong>Note:</strong> The display name here is for admin reference only. To change the client
+          name shown on dashboard project cards, edit it on the{" "}
+          <Link href="/admin/projects" className="underline font-medium">Projects page</Link>.
+        </div>
         <Link href="/admin">
           <Button variant="outline">Back to Admin</Button>
         </Link>

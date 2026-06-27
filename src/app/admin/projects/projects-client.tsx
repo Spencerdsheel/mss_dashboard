@@ -16,6 +16,7 @@ interface ProjectsClientProps {
 
 type DraftState = {
   name: string;
+  client_name: string;
   start_date: string;
   end_date: string;
 };
@@ -29,7 +30,7 @@ type Message = {
 export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProps) {
   const [isPending, startTransition] = useTransition();
   const [editingKey, setEditingKey] = useState<string | null>(null); // "tenantId:projectId"
-  const [draft, setDraft] = useState<DraftState>({ name: "", start_date: "", end_date: "" });
+  const [draft, setDraft] = useState<DraftState>({ name: "", client_name: "", start_date: "", end_date: "" });
   const [message, setMessage] = useState<Message | null>(null);
 
   // Local copy of projects so we can reflect saves without a page reload
@@ -42,6 +43,7 @@ export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProp
     setEditingKey(key);
     setDraft({
       name: project.name,
+      client_name: project.client_name ?? "",
       start_date: project.start_date ?? "",
       end_date: project.end_date ?? "",
     });
@@ -59,6 +61,7 @@ export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProp
       try {
         const updated = await updateProjectAction(tenantId, projectId, {
           name: draft.name.trim() || undefined,
+          client_name: draft.client_name.trim() || undefined,
           start_date: draft.start_date.trim() || null,
           end_date: draft.end_date.trim() || null,
         });
@@ -117,6 +120,7 @@ export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProp
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-medium text-sm">{project.name}</p>
+                              <p className="text-xs text-muted-foreground">{project.client_name}</p>
                               <p className="font-mono text-xs text-muted-foreground">{project.id}</p>
                             </div>
                             {!isEditing && (
@@ -154,6 +158,18 @@ export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProp
                                   placeholder="Project name"
                                   className="max-w-sm"
                                   autoFocus
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`client-${key}`} className="text-xs text-muted-foreground">
+                                  Client Name (shown on dashboard)
+                                </Label>
+                                <Input
+                                  id={`client-${key}`}
+                                  value={draft.client_name}
+                                  onChange={(e) => setDraft((d) => ({ ...d, client_name: e.target.value }))}
+                                  placeholder="e.g. Brasserie Labatt"
+                                  className="max-w-sm"
                                 />
                               </div>
                               <div className="grid grid-cols-2 gap-3 max-w-sm">

@@ -66,6 +66,7 @@ class ProjectUpdateRequest(BaseModel):
     name: str | None = None
     start_date: str | None = None
     end_date: str | None = None
+    client_name: str | None = None
 
 
 class PhotoSlotLabel(BaseModel):
@@ -110,7 +111,7 @@ async def _validate_user_fields(
     project_ids: list[str] | None,
     repository: DashboardRepository,
 ) -> None:
-    """S8: Validate role, tenant existence, and project–tenant membership.
+    """S8: Validate role, tenant existence, and project—tenant membership.
 
     Raises HTTP 422 on any invalid input so bad data is rejected before it
     reaches the DB (where it would either be stored as garbage or 500 later).
@@ -122,7 +123,7 @@ async def _validate_user_fields(
         )
 
     if tenant_id is not None:
-        # Verify the tenant exists — list_tenants is the only available
+        # Verify the tenant exists â€” list_tenants is the only available
         # tenant-lookup surface on the base repository contract.
         list_tenants = getattr(repository, "list_tenants", None)
         if list_tenants is not None:
@@ -189,7 +190,7 @@ async def update_project(
     method = require_admin_operation(repository, "update_project")
     try:
         return to_public_dict(
-            await method(tenant_id, project_id, request.name, request.start_date, request.end_date)
+            await method(tenant_id, project_id, request.name, request.start_date, request.end_date, request.client_name)
         )
     except ValueError as exc:
         raise NotFoundError(str(exc)) from exc
@@ -402,7 +403,7 @@ async def issue_password_reset(
 ) -> dict:
     """Admin-only: issue a one-time password-reset token for a user.
 
-    The raw token is returned exclusively to the authenticated admin — this is
+    The raw token is returned exclusively to the authenticated admin â€” this is
     intentional and authorised.  The admin acts as the secure out-of-band
     delivery channel (e.g. they relay the code to the user via a trusted
     channel).  This is NOT a secret leak to an unauthenticated party.
@@ -419,7 +420,7 @@ async def issue_password_reset(
     except ValueError as exc:
         raise NotFoundError(str(exc)) from exc
 
-    # Derive tenant_id from verified server-side metadata — never from caller.
+    # Derive tenant_id from verified server-side metadata â€” never from caller.
     tenant_id: str | None = meta.get("tenant_id")
 
     issue = require_admin_operation(repository, "issue_password_reset_token")
@@ -431,7 +432,7 @@ async def issue_password_reset(
     )
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
 
-    # raw_token intentionally included — admin is the authorised delivery channel.
+    # raw_token intentionally included â€” admin is the authorised delivery channel.
     # Do not log the token value.
     return {
         "token": raw_token,
