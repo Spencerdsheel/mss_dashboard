@@ -4,7 +4,7 @@ import { getProjectSummary } from "@/server/analytics";
 import { getDashboardProvider } from "@/server/providers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate, formatPct } from "@/lib/utils";
+import { formatDate, formatPct, cn } from "@/lib/utils";
 import { ArrowRight, Target, Camera, Store, Calendar } from "lucide-react";
 import { ChartsSection } from "./charts-section";
 import { StaggerCards, StaggerCard } from "@/components/ui/stagger-cards";
@@ -146,12 +146,17 @@ function Kpi({
   progress?: number;
 }) {
   return (
-    <div className="card-ventriloc p-5">
+    <div className="card-ventriloc p-5 flex flex-col justify-between min-h-[140px]">
       <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate">
         <span>{label}</span>
         <span className="text-signal-orange">{icon}</span>
       </div>
-      <div className="mt-3 kpi-number">
+      <div className={cn(
+        "mt-3",
+        value !== null
+          ? "kpi-number"
+          : "font-space-grotesk text-base font-medium text-carbon"
+      )} style={value !== null ? undefined : { letterSpacing: "-0.02em" }}>
         {value !== null ? <AnimatedCounter value={value} /> : displayValue}
       </div>
       {sub && <div className="mt-1 text-xs text-slate">{sub}</div>}

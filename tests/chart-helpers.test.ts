@@ -35,17 +35,19 @@ describe("buildTrendData", () => {
 });
 
 describe("installGridClass", () => {
-  it("1 or 2 slots → 2 columns", () => {
-    expect(installGridClass(1)).toBe("lg:grid-cols-2");
+  it("1 slot → no extra class", () => {
+    expect(installGridClass(1)).toBe("");
+  });
+  it("2 slots → 2 columns", () => {
     expect(installGridClass(2)).toBe("lg:grid-cols-2");
   });
-  it("3 slots → 3 columns", () => {
-    expect(installGridClass(3)).toBe("lg:grid-cols-3");
+  it("3 slots → 2 cols", () => {
+    expect(installGridClass(3)).toBe("lg:grid-cols-2");
   });
-  it("4 slots → 4 columns", () => {
-    expect(installGridClass(4)).toBe("lg:grid-cols-4");
+  it("4 slots → 2 cols", () => {
+    expect(installGridClass(4)).toBe("lg:grid-cols-2");
   });
-  it("more than 4 slots clamps to 4 columns", () => {
-    expect(installGridClass(5)).toBe("lg:grid-cols-4");
+  it("more than 4 slots clamps to 2 cols", () => {
+    expect(installGridClass(5)).toBe("lg:grid-cols-2");
   });
 });

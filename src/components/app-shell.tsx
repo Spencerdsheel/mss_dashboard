@@ -12,15 +12,15 @@ type NavItem = { href: string; label: string; adminOnly?: boolean };
 export function AppShell({
   children,
   session,
-  projectId,
   siteTitle = "iSN",
 }: {
   children: ReactNode;
   session: { user: { email?: string | null; name?: string | null; role: "ADMIN" | "CLIENT" } };
-  projectId?: string;
   siteTitle?: string;
 }) {
   const pathname = usePathname();
+  const projectMatch = pathname.match(/^\/dashboard\/projects\/([^/]+)/);
+  const projectId = projectMatch?.[1];
 
   const items: NavItem[] = [
     { href: "/dashboard", label: "Home" },
