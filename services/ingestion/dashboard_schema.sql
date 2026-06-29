@@ -1,10 +1,20 @@
 CREATE SCHEMA IF NOT EXISTS dashboard;
 
+CREATE TABLE IF NOT EXISTS dashboard.companies (
+    company_id   TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    slug         TEXT NOT NULL UNIQUE,
+    status       TEXT NOT NULL DEFAULT 'active',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS dashboard.tenants (
     tenant_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
     locale TEXT NOT NULL DEFAULT 'fr-CA',
+    company_id TEXT REFERENCES dashboard.companies(company_id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -107,6 +117,7 @@ ALTER TABLE dashboard.provider_connections ADD COLUMN IF NOT EXISTS display_name
 CREATE TABLE IF NOT EXISTS dashboard.users (
     user_id TEXT PRIMARY KEY,
     tenant_id TEXT REFERENCES dashboard.tenants(tenant_id) ON DELETE SET NULL,
+    company_id TEXT REFERENCES dashboard.companies(company_id),
     email TEXT NOT NULL UNIQUE,
     name TEXT,
     role TEXT NOT NULL,

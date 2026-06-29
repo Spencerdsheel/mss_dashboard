@@ -7,6 +7,7 @@ from typing import Protocol
 
 from .models import (
     AuthClaims,
+    Company,
     DistributionEntry,
     Project,
     ProjectMetric,
@@ -80,6 +81,16 @@ class DashboardRepository(Protocol):
 
     async def set_platform_setting(self, key: str, value: str) -> str: ...
 
+    async def list_companies(self) -> list[Company]: ...
+
+    async def create_company(self, company_id: str, name: str, slug: str) -> Company: ...
+
+    async def get_company(self, company_id: str) -> Company | None: ...
+
+    async def update_company(self, company_id: str, name: str | None = None, slug: str | None = None) -> Company: ...
+
+    async def list_tenants_for_company(self, company_id: str) -> list[Tenant]: ...
+
 
 class InMemoryDashboardRepository:
     """Small Phase 01 repository for auth/RBAC/API wiring tests.
@@ -98,10 +109,12 @@ class InMemoryDashboardRepository:
         visits: list[Visit] | None = None,
         photos: list[VisitPhoto] | None = None,
         run_logs: list[RunLog] | None = None,
+        companies: list[Company] | None = None,
     ) -> None:
         self.tenants = tenants
         self.users = users
         self.projects = projects
+        self.companies: list[Company] = companies or []
         self.metrics = metrics or {}
         self.visits = visits or []
         self.photos = photos or []
@@ -123,8 +136,20 @@ class InMemoryDashboardRepository:
         def _with_count(p: Project) -> Project:
             return dc_replace(p, visit_count=visit_counts.get(p.id, 0))
 
-        if claims.role == Role.ADMIN:
+        if claims.role == Role.PLATFORM_ADMIN:
             return [_with_count(p) for p in sorted(self.projects, key=lambda p: p.name)]
+        if claims.role == Role.CLIENT_ADMIN:
+            # CLIENT_ADMIN sees projects in tenants belonging to their company
+            if claims.company_id is None:
+                return []
+            company_tenant_ids = {t.id for t in self.tenants if t.company_id == claims.company_id}
+            return [
+                _with_count(p)
+                for p in sorted(
+                    [p for p in self.projects if p.tenant_id in company_tenant_ids],
+                    key=lambda p: p.name,
+                )
+            ]
         return [
             _with_count(p)
             for p in sorted(
@@ -299,10 +324,43 @@ class InMemoryDashboardRepository:
     async def set_platform_setting(self, key: str, value: str) -> str:
         return value
 
+    async def list_companies(self) -> list[Company]:
+        return sorted(self.companies, key=lambda c: c.name)
+
+    async def create_company(self, company_id: str, name: str, slug: str) -> Company:
+        company = Company(id=company_id, name=name, slug=slug)
+        self.companies.append(company)
+        return company
+
+    async def get_company(self, company_id: str) -> Company | None:
+        return next((c for c in self.companies if c.id == company_id), None)
+
+    async def update_company(self, company_id: str, name: str | None = None, slug: str | None = None) -> Company:
+        from dataclasses import replace as dc_replace
+        idx = next((i for i, c in enumerate(self.companies) if c.id == company_id), None)
+        if idx is None:
+            raise ValueError(f"Company '{company_id}' not found")
+        existing = self.companies[idx]
+        updated = dc_replace(
+            existing,
+            name=name if name is not None else existing.name,
+            slug=slug if slug is not None else existing.slug,
+        )
+        self.companies = list(self.companies)
+        self.companies[idx] = updated
+        return updated
+
+    async def list_tenants_for_company(self, company_id: str) -> list[Tenant]:
+        return sorted(
+            [t for t in self.tenants if t.company_id == company_id],
+            key=lambda t: t.name,
+        )
+
 
 def seed_phase01_repository(password: str = "Demo123!") -> InMemoryDashboardRepository:
-    tenant_a = Tenant(id="tenant_labatt", name="Brasserie Labatt", slug="brasserie-labatt", country="CA")
-    tenant_b = Tenant(id="tenant_other", name="Other Client", slug="other-client", country="CA")
+    default_company = Company(id="company_default", name="Default Company", slug="default")
+    tenant_a = Tenant(id="tenant_labatt", name="Brasserie Labatt", slug="brasserie-labatt", country="CA", company_id=default_company.id)
+    tenant_b = Tenant(id="tenant_other", name="Other Client", slug="other-client", country="CA", company_id=default_company.id)
     project_a = Project(
         id="project_messi_flying_fish",
         tenant_id=tenant_a.id,
@@ -326,27 +384,30 @@ def seed_phase01_repository(password: str = "Demo123!") -> InMemoryDashboardRepo
             id="user_admin",
             email="admin@demo.local",
             name="Demo Admin",
-            role=Role.ADMIN,
+            role=Role.PLATFORM_ADMIN,
             tenant_id=None,
             hashed_password=hash_password(password),
+            company_id=default_company.id,
             project_ids=(),
         ),
         User(
             id="user_client",
             email="client@demo.local",
             name="Demo Client",
-            role=Role.CLIENT,
+            role=Role.TENANT_USER,
             tenant_id=tenant_a.id,
             hashed_password=hash_password(password),
+            company_id=default_company.id,
             project_ids=(project_a.id,),
         ),
         User(
             id="user_other",
             email="other@demo.local",
             name="Other Client",
-            role=Role.CLIENT,
+            role=Role.TENANT_USER,
             tenant_id=tenant_b.id,
             hashed_password=hash_password(password),
+            company_id=default_company.id,
             project_ids=(project_b.id,),
         ),
     ]
@@ -394,6 +455,7 @@ def seed_phase01_repository(password: str = "Demo123!") -> InMemoryDashboardRepo
         metrics=metrics,
         visits=visits,
         photos=photos,
+        companies=[default_company],
     )
 
 

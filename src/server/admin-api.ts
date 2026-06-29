@@ -13,7 +13,7 @@ export type AdminUser = {
   id: string;
   email: string;
   name: string | null;
-  role: "ADMIN" | "CLIENT";
+  role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
   tenant_id: string | null;
   project_ids: string[];
   status: string;

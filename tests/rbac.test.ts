@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-type Role = "ADMIN" | "CLIENT";
+type Role = "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
 type SessionUser = { id: string; role: Role; clientId: string | null };
 type Project = { id: string; clientId: string };
 type Membership = { userId: string; projectId: string };
@@ -19,16 +19,16 @@ function canAccessProject(
   membership: Membership | null
 ): boolean {
   if (!project) return false;
-  if (user.role === "ADMIN") return true;
+  if (user.role === "PLATFORM_ADMIN") return true;
   if (!user.clientId) return false;
   if (project.clientId !== user.clientId) return false;
   if (!membership) return false;
   return true;
 }
 
-const admin: SessionUser = { id: "u_admin", role: "ADMIN", clientId: null };
-const clientA: SessionUser = { id: "u_clientA", role: "CLIENT", clientId: "c_A" };
-const clientB: SessionUser = { id: "u_clientB", role: "CLIENT", clientId: "c_B" };
+const admin: SessionUser = { id: "u_admin", role: "PLATFORM_ADMIN", clientId: null };
+const clientA: SessionUser = { id: "u_clientA", role: "TENANT_USER", clientId: "c_A" };
+const clientB: SessionUser = { id: "u_clientB", role: "TENANT_USER", clientId: "c_B" };
 
 const projectA: Project = { id: "p_A", clientId: "c_A" };
 const projectB: Project = { id: "p_B", clientId: "c_B" };
@@ -59,7 +59,7 @@ describe("RBAC policy", () => {
   });
 
   it("client without clientId is denied everywhere", () => {
-    const orphan: SessionUser = { id: "u_orphan", role: "CLIENT", clientId: null };
+    const orphan: SessionUser = { id: "u_orphan", role: "TENANT_USER", clientId: null };
     expect(canAccessProject(orphan, projectA, membershipA)).toBe(false);
   });
 

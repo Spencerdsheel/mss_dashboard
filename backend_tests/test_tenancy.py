@@ -10,16 +10,16 @@ from services.common.tenancy import (
     require_admin,
 )
 
-ADMIN_CLAIMS = AuthClaims(user_id="u-admin", role=Role.ADMIN, tenant_id=None)
+ADMIN_CLAIMS = AuthClaims(user_id="u-admin", role=Role.PLATFORM_ADMIN, tenant_id=None)
 CLIENT_CLAIMS_OWNED = AuthClaims(
     user_id="u-client",
-    role=Role.CLIENT,
+    role=Role.TENANT_USER,
     tenant_id="tenant_labatt",
     project_ids=("proj_messi",),
 )
 CLIENT_CLAIMS_FOREIGN = AuthClaims(
     user_id="u-client2",
-    role=Role.CLIENT,
+    role=Role.TENANT_USER,
     tenant_id="tenant_other",
     project_ids=("proj_other",),
 )
@@ -45,7 +45,7 @@ class TestRequireAdmin:
         require_admin(ADMIN_CLAIMS)  # should not raise
 
     def test_client_raises(self):
-        with pytest.raises(AuthorizationError, match="Admin role"):
+        with pytest.raises(AuthorizationError, match="Platform admin"):
             require_admin(CLIENT_CLAIMS_OWNED)
 
 
@@ -76,7 +76,7 @@ class TestCanAccessProject:
         assert can_access_project(CLIENT_CLAIMS_OWNED, None) is False
 
     def test_client_without_tenant_id_cannot_access(self):
-        claims = AuthClaims(user_id="u-bad", role=Role.CLIENT, tenant_id=None, project_ids=("proj_messi",))
+        claims = AuthClaims(user_id="u-bad", role=Role.TENANT_USER, tenant_id=None, project_ids=("proj_messi",))
         assert can_access_project(claims, OWNED_PROJECT) is False
 
 

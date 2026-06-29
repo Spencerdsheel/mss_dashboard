@@ -10,7 +10,7 @@ export type BackendAuthToken = {
   user: {
     id: string;
     email: string;
-    role: "ADMIN" | "CLIENT";
+    role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
     tenant_id: string | null;
     project_ids: string[];
   };

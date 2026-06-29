@@ -39,7 +39,7 @@ export async function requireSession(): Promise<AuthSession> {
 
 export async function requireAdmin(): Promise<AuthSession> {
   const session = await requireSession();
-  if (session.user.role !== "ADMIN") redirect("/dashboard");
+  if (session.user.role !== "PLATFORM_ADMIN") redirect("/dashboard");
   return session;
 }
 
@@ -58,7 +58,7 @@ export async function assertProjectAccess(projectId: string) {
   
   if (!project) redirect("/dashboard");
   
-  if (role === "ADMIN") return { session, project };
+  if (role === "PLATFORM_ADMIN") return { session, project };
   
   if (!clientId || project.clientSlug !== clientId) {
     redirect("/dashboard");
@@ -76,7 +76,7 @@ export async function listVisibleProjects() {
   const projects = await provider.listProjects();
   
   // Admin sees all projects, client sees only their tenant's projects
-  if (role === "ADMIN") {
+  if (role === "PLATFORM_ADMIN") {
     return projects;
   }
   
@@ -84,5 +84,5 @@ export async function listVisibleProjects() {
 }
 
 export function isAdminRole(role: Role | undefined) {
-  return role === "ADMIN";
+  return role === "PLATFORM_ADMIN";
 }

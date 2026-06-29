@@ -31,7 +31,7 @@ def _settings(**overrides):
     return Settings(**defaults)
 
 
-def _user(role=Role.ADMIN, tenant_id=None, project_ids=()):
+def _user(role=Role.PLATFORM_ADMIN, tenant_id=None, project_ids=(), company_id=None):
     return User(
         id="u-1",
         email="test@example.com",
@@ -40,6 +40,7 @@ def _user(role=Role.ADMIN, tenant_id=None, project_ids=()):
         tenant_id=tenant_id,
         hashed_password=hash_password("password123"),
         project_ids=project_ids,
+        company_id=company_id,
     )
 
 
@@ -81,12 +82,12 @@ class TestPasswordHashing:
 
 class TestJwtRoundTrip:
     def test_encode_decode_preserves_claims(self):
-        user = _user(role=Role.ADMIN, tenant_id="tenant_1", project_ids=("p1", "p2"))
+        user = _user(role=Role.PLATFORM_ADMIN, tenant_id="tenant_1", project_ids=("p1", "p2"))
         token = create_access_token(user, _settings(), now=1_000_000)
         claims = decode_access_token(token, _settings(), now=1_000_000)
 
         assert claims.user_id == "u-1"
-        assert claims.role == Role.ADMIN
+        assert claims.role == Role.PLATFORM_ADMIN
         assert claims.tenant_id == "tenant_1"
         assert claims.project_ids == ("p1", "p2")
 
@@ -112,17 +113,17 @@ class TestJwtRoundTrip:
         with pytest.raises(AuthError):
             decode_access_token(tampered, _settings(), now=1_000_000)
 
-    def test_client_token_without_tenant_id_raises(self):
-        user = _user(role=Role.CLIENT, tenant_id=None)
+    def test_tenant_user_token_without_tenant_id_raises(self):
+        user = _user(role=Role.TENANT_USER, tenant_id=None)
         token = create_access_token(user, _settings(), now=1_000_000)
         with pytest.raises(AuthError, match="tenant_id"):
             decode_access_token(token, _settings(), now=1_000_000)
 
-    def test_client_token_with_tenant_id_succeeds(self):
-        user = _user(role=Role.CLIENT, tenant_id="tenant_1", project_ids=("p1",))
+    def test_tenant_user_token_with_tenant_id_succeeds(self):
+        user = _user(role=Role.TENANT_USER, tenant_id="tenant_1", project_ids=("p1",))
         token = create_access_token(user, _settings(), now=1_000_000)
         claims = decode_access_token(token, _settings(), now=1_000_000)
-        assert claims.role == Role.CLIENT
+        assert claims.role == Role.TENANT_USER
         assert claims.tenant_id == "tenant_1"
 
     def test_aud_claim_verified_when_configured(self):

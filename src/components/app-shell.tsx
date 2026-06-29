@@ -15,7 +15,7 @@ export function AppShell({
   siteTitle = "iSN",
 }: {
   children: ReactNode;
-  session: { user: { email?: string | null; name?: string | null; role: "ADMIN" | "CLIENT" } };
+  session: { user: { email?: string | null; name?: string | null; role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER" } };
   siteTitle?: string;
 }) {
   const pathname = usePathname();
@@ -36,7 +36,7 @@ export function AppShell({
 
   items.push({ href: "/admin", label: "Admin", adminOnly: true });
 
-  const filtered = items.filter((i) => !i.adminOnly || session.user.role === "ADMIN");
+  const filtered = items.filter((i) => !i.adminOnly || session.user.role === "PLATFORM_ADMIN");
 
   return (
     <div className="min-h-screen bg-background">

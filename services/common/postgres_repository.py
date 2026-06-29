@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import asyncpg
 
-from .models import AuthClaims, DistributionEntry, InstallCategory, InstallSlot, Project, ProjectMetric, ProjectSummary, Role, RunLog, Tenant, User, Visit, VisitPhoto
+from .models import AuthClaims, Company, DistributionEntry, InstallCategory, InstallSlot, Project, ProjectMetric, ProjectSummary, Role, RunLog, Tenant, User, Visit, VisitPhoto, resolve_role
 from .repository import DashboardRepository, seed_phase01_repository, to_client_visit_dict, to_public_dict
 from .secrets import encrypt_secret
 from .security import hash_password, hash_reset_token, verify_password, verify_reset_token, generate_reset_token
@@ -145,7 +145,7 @@ class PostgresDashboardRepository:
         )
 
     async def list_projects(self, claims: AuthClaims) -> list[Project]:
-        if claims.role == Role.ADMIN:
+        if claims.role == Role.PLATFORM_ADMIN:
             rows = await self._fetch_all(
                 """
                 SELECT p.tenant_id, p.project_id, p.name, p.slug, p.client_name,
@@ -409,7 +409,7 @@ class PostgresDashboardRepository:
 
     async def list_tenants(self) -> list[Tenant]:
         rows = await self._fetch_all_replica(
-            "SELECT tenant_id, name, slug, locale FROM dashboard.tenants ORDER BY name ASC"
+            "SELECT tenant_id, name, slug, locale, company_id FROM dashboard.tenants ORDER BY name ASC"
         )
         return [
             Tenant(
@@ -417,14 +417,58 @@ class PostgresDashboardRepository:
                 name=str(row["name"]),
                 slug=str(row["slug"]),
                 country=None,
+                company_id=row.get("company_id"),
             )
             for row in rows
         ]
 
+    async def list_companies(self) -> list[Company]:
+        rows = await self._fetch_all(
+            "SELECT * FROM dashboard.companies ORDER BY name ASC"
+        )
+        return [company_from_row(r) for r in rows]
+
+    async def create_company(self, company_id: str, name: str, slug: str) -> Company:
+        row = await self._fetch_one(
+            """INSERT INTO dashboard.companies (company_id, name, slug)
+               VALUES ($1, $2, $3)
+               RETURNING *""",
+            company_id, name, slug,
+        )
+        return company_from_row(row)
+
+    async def get_company(self, company_id: str) -> Company | None:
+        row = await self._fetch_one(
+            "SELECT * FROM dashboard.companies WHERE company_id = $1",
+            company_id,
+        )
+        return company_from_row(row) if row else None
+
+    async def update_company(self, company_id: str, name: str | None = None, slug: str | None = None) -> Company:
+        row = await self._fetch_one(
+            """UPDATE dashboard.companies
+               SET name = COALESCE($2, name),
+                   slug = COALESCE($3, slug),
+                   updated_at = now()
+               WHERE company_id = $1
+               RETURNING *""",
+            company_id, name, slug,
+        )
+        return company_from_row(row)
+
+    async def list_tenants_for_company(self, company_id: str) -> list[Tenant]:
+        rows = await self._fetch_all(
+            """SELECT * FROM dashboard.tenants
+               WHERE company_id = $1
+               ORDER BY name ASC""",
+            company_id,
+        )
+        return [tenant_from_row(r) for r in rows]
+
     async def list_users(self) -> list[User]:
         rows = await self._fetch_all_replica(
             """
-            SELECT user_id, tenant_id, email, name, role, project_ids
+            SELECT user_id, tenant_id, email, name, role, project_ids, company_id
             FROM dashboard.users
             ORDER BY email ASC
             """
@@ -576,14 +620,15 @@ class PostgresDashboardRepository:
         tenant_id: str | None,
         project_ids: list[str],
         password: str,
+        company_id: str | None = None,
     ) -> dict:
         user_id = f"user_{uuid4().hex}"
         hashed_pw = hash_password(password)
         await self._execute(
             """
             INSERT INTO dashboard.users
-                (user_id, tenant_id, email, name, role, project_ids, hashed_password, status, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now())
+                (user_id, tenant_id, email, name, role, project_ids, hashed_password, status, updated_at, company_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now(), $8)
             """,
             user_id,
             tenant_id,
@@ -592,6 +637,7 @@ class PostgresDashboardRepository:
             role,
             project_ids,
             hashed_pw,
+            company_id,
         )
         return await self.get_user_metadata(user_id)
 
@@ -604,6 +650,7 @@ class PostgresDashboardRepository:
         tenant_id: str | None,
         project_ids: list[str] | None,
         status: str | None,
+        company_id: str | None = None,
         password: str | None = None,
     ) -> dict:
         row = await self._fetch_one("SELECT * FROM dashboard.users WHERE user_id = $1", user_id)
@@ -621,7 +668,8 @@ class PostgresDashboardRepository:
                     project_ids = $4,
                     status = $5,
                     hashed_password = $6,
-                    updated_at = now()
+                    updated_at = now(),
+                    company_id = COALESCE($8, company_id)
                 WHERE user_id = $7
                 """,
                 name if name is not None else row["name"],
@@ -631,6 +679,7 @@ class PostgresDashboardRepository:
                 status if status is not None else row["status"],
                 hashed_pw,
                 user_id,
+                company_id,
             )
         else:
             await self._execute(
@@ -641,7 +690,8 @@ class PostgresDashboardRepository:
                     tenant_id = $3,
                     project_ids = $4,
                     status = $5,
-                    updated_at = now()
+                    updated_at = now(),
+                    company_id = COALESCE($7, company_id)
                 WHERE user_id = $6
                 """,
                 name if name is not None else row["name"],
@@ -650,6 +700,7 @@ class PostgresDashboardRepository:
                 project_ids if project_ids is not None else row["project_ids"],
                 status if status is not None else row["status"],
                 user_id,
+                company_id,
             )
         return await self.get_user_metadata(user_id)
 
@@ -1009,6 +1060,25 @@ def project_from_row(row: dict[str, Any]) -> Project:
     )
 
 
+def company_from_row(row: dict[str, Any]) -> Company:
+    return Company(
+        id=str(row["company_id"]),
+        name=str(row["name"]),
+        slug=str(row["slug"]),
+        status=row.get("status", "active"),
+    )
+
+
+def tenant_from_row(row: dict[str, Any]) -> Tenant:
+    return Tenant(
+        id=str(row["tenant_id"]),
+        name=str(row["name"]),
+        slug=str(row["slug"]),
+        country=row.get("locale"),
+        company_id=row.get("company_id"),
+    )
+
+
 def metric_from_row(row: dict[str, Any]) -> ProjectMetric:
     return ProjectMetric(
         key=str(row["key"]),
@@ -1055,9 +1125,10 @@ def user_from_row(row: dict[str, Any]) -> User:
         id=str(row["user_id"]),
         email=str(row["email"]),
         name=row.get("name"),
-        role=Role(str(row["role"])),
+        role=resolve_role(str(row["role"])),
         tenant_id=row.get("tenant_id"),
         hashed_password="",
+        company_id=row.get("company_id"),
         project_ids=tuple(row.get("project_ids") or []),
     )
 

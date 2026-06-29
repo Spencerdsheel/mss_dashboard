@@ -7,8 +7,27 @@ from typing import Any
 
 
 class Role(str, Enum):
-    ADMIN = "ADMIN"
-    CLIENT = "CLIENT"
+    PLATFORM_ADMIN = "PLATFORM_ADMIN"
+    CLIENT_ADMIN = "CLIENT_ADMIN"
+    TENANT_USER = "TENANT_USER"
+
+
+# Backward compat for existing JWT tokens and DB rows during migration
+_ROLE_MIGRATION: dict[str, Role] = {
+    "ADMIN": Role.PLATFORM_ADMIN,
+    "CLIENT": Role.TENANT_USER,
+}
+
+
+def resolve_role(raw: str) -> Role:
+    """Resolve a role string to a Role enum, handling legacy values."""
+    try:
+        return Role(raw)
+    except ValueError:
+        migrated = _ROLE_MIGRATION.get(raw)
+        if migrated is not None:
+            return migrated
+        raise ValueError(f"Unknown role: {raw!r}")
 
 
 @dataclass(frozen=True)
@@ -16,8 +35,17 @@ class AuthClaims:
     user_id: str
     role: Role
     tenant_id: str | None
+    company_id: str | None = None
     project_ids: tuple[str, ...] = field(default_factory=tuple)
     email: str | None = None
+
+
+@dataclass(frozen=True)
+class Company:
+    id: str
+    name: str
+    slug: str
+    status: str = "active"
 
 
 @dataclass(frozen=True)
@@ -27,6 +55,7 @@ class Tenant:
     slug: str
     country: str | None = None
     status: str = "active"
+    company_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +66,7 @@ class User:
     role: Role
     tenant_id: str | None
     hashed_password: str
+    company_id: str | None = None
     project_ids: tuple[str, ...] = field(default_factory=tuple)
 
 

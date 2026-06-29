@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def require_admin_claims(claims=Depends(get_current_claims)):
-    if claims.role != Role.ADMIN:
+    if claims.role != Role.PLATFORM_ADMIN:
         raise AuthorizationError("Admin role required")
     return claims
 
@@ -47,7 +47,7 @@ class ProviderConnectionRequest(BaseModel):
 class UserCreateRequest(BaseModel):
     email: str
     name: str | None = None
-    role: str = "CLIENT"
+    role: str = "TENANT_USER"
     tenant_id: str | None = None
     project_ids: list[str] = []
     password: str
@@ -141,7 +141,7 @@ async def _validate_user_fields(
                 from services.common.models import AuthClaims, Role as _Role
                 admin_claims = AuthClaims(
                     user_id="__admin_validation__",
-                    role=_Role.ADMIN,
+                    role=_Role.PLATFORM_ADMIN,
                     tenant_id=None,
                 )
                 list_projects = getattr(repository, "list_projects", None)

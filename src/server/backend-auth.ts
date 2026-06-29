@@ -5,7 +5,7 @@ export type BackendSession = {
   user: {
     id: string;
     email: string;
-    role: "ADMIN" | "CLIENT";
+    role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
     tenant_id: string | null;
     project_ids: string[];
   };
@@ -50,6 +50,6 @@ export async function requireBackendSession(): Promise<BackendSession> {
 
 export async function requireBackendAdmin(): Promise<BackendSession> {
   const session = await requireBackendSession();
-  if (session.user.role !== "ADMIN") redirect("/dashboard");
+  if (session.user.role !== "PLATFORM_ADMIN") redirect("/dashboard");
   return session;
 }

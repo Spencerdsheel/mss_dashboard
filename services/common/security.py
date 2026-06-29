@@ -13,7 +13,7 @@ from typing import Any
 
 import redis
 
-from .models import AuthClaims, Role, User
+from .models import AuthClaims, Role, User, resolve_role
 from .settings import Settings
 
 
@@ -65,6 +65,7 @@ def create_access_token(
         "tenant_id": user.tenant_id,
         "role": user.role.value,
         "project_ids": list(user.project_ids),
+        "company_id": user.company_id,
         "jti": str(uuid.uuid4()),
         "iat": issued_at,
         "exp": issued_at + settings.jwt_ttl_seconds,
@@ -154,22 +155,26 @@ def decode_access_token(
             raise AuthError("Token has been revoked")
 
     try:
-        role = Role(str(payload["role"]))
+        role = resolve_role(str(payload["role"]))
         project_ids = tuple(str(p) for p in payload.get("project_ids", []))
         tenant_id = payload.get("tenant_id")
+        company_id = payload.get("company_id")
 
-        # S7: CLIENT-role tokens must carry a tenant_id claim. An admin token
-        # without tenant_id is legitimate (admin spans all tenants). A client
-        # token without tenant_id would allow the bearer to slip past tenant
-        # isolation checks, so we reject it here rather than later.
-        if role == Role.CLIENT and not tenant_id:
-            raise AuthError("CLIENT token missing required tenant_id claim")
+        # TENANT_USER tokens must carry a tenant_id claim.
+        # A TENANT_USER token without tenant_id would bypass tenant isolation.
+        if role == Role.TENANT_USER and not tenant_id:
+            raise AuthError("TENANT_USER token missing required tenant_id claim")
+
+        # CLIENT_ADMIN tokens must carry a company_id claim.
+        if role == Role.CLIENT_ADMIN and not company_id:
+            raise AuthError("CLIENT_ADMIN token missing required company_id claim")
 
         return AuthClaims(
             user_id=str(payload["sub"]),
             email=payload.get("email"),
             role=role,
             tenant_id=str(tenant_id) if tenant_id is not None else None,
+            company_id=str(company_id) if company_id is not None else None,
             project_ids=project_ids,
         )
     except AuthError:

@@ -78,7 +78,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
     email: "",
     name: "",
     password: "",
-    role: "CLIENT",
+    role: "TENANT_USER",
     tenant_id: "none" as string | null,
     project_ids: [] as string[],
   });
@@ -90,7 +90,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
       email: "",
       name: "",
       password: "",
-      role: "CLIENT",
+      role: "TENANT_USER",
       tenant_id: "none",
       project_ids: [],
     });
@@ -111,7 +111,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
     });
     setError(null);
 
-    if (user.tenant_id && user.role === "CLIENT") {
+    if (user.tenant_id && user.role === "TENANT_USER") {
       setIsLoadingProjects(true);
       try {
         const projects = await getProjectsForTenant(user.tenant_id);
@@ -131,7 +131,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
     setFormData({ ...formData, tenant_id: newTenantId, project_ids: [] });
     setAvailableProjects([]);
 
-    if (newTenantId && formData.role === "CLIENT") {
+    if (newTenantId && formData.role === "TENANT_USER") {
       setIsLoadingProjects(true);
       try {
         const projects = await getProjectsForTenant(newTenantId);
@@ -152,7 +152,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
     setFormData({ ...formData, role: value, project_ids: [] });
     setAvailableProjects([]);
 
-    if (value === "CLIENT" && formData.tenant_id) {
+    if (value === "TENANT_USER" && formData.tenant_id) {
       setIsLoadingProjects(true);
       try {
         const projects = await getProjectsForTenant(formData.tenant_id);
@@ -241,7 +241,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
                 <td className="py-3 px-4">{user.email}</td>
                 <td className="py-3 px-4">{user.name || "—"}</td>
                 <td className="py-3 px-4">
-                  <Badge variant={user.role === "ADMIN" ? "brand" : "secondary"}>
+                  <Badge variant={user.role === "PLATFORM_ADMIN" ? "brand" : "secondary"}>
                     {user.role}
                   </Badge>
                 </td>
@@ -364,8 +364,9 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ADMIN">ADMIN</SelectItem>
-                  <SelectItem value="CLIENT">CLIENT</SelectItem>
+                  <SelectItem value="PLATFORM_ADMIN">Platform Admin</SelectItem>
+                  <SelectItem value="CLIENT_ADMIN">Client Admin</SelectItem>
+                  <SelectItem value="TENANT_USER">Tenant User</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -389,7 +390,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
               </Select>
             </div>
 
-            {formData.role === "CLIENT" && formData.tenant_id && (
+            {formData.role === "TENANT_USER" && formData.tenant_id && (
               <div className="space-y-2">
                 <Label>Projects</Label>
                 {isLoadingProjects ? (

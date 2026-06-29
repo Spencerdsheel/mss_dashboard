@@ -78,7 +78,7 @@ export default async function AdminPage() {
                 <tr key={u.id} className="border-b last:border-b-0">
                   <td className="py-2">{u.email}</td>
                   <td>
-                    <Badge variant={u.role === "ADMIN" ? "brand" : "secondary"}>
+                    <Badge variant={u.role === "PLATFORM_ADMIN" ? "brand" : "secondary"}>
                       {u.role}
                     </Badge>
                   </td>
