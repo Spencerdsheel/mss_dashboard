@@ -485,6 +485,18 @@ class PostgresDashboardRepository:
         )
         return [tenant_from_row(r) for r in rows]
 
+    async def assign_tenant_to_company(self, tenant_id: str, company_id: str) -> Tenant:
+        row = await self._fetch_one(
+            """UPDATE dashboard.tenants
+               SET company_id = $2, updated_at = now()
+               WHERE tenant_id = $1
+               RETURNING *""",
+            tenant_id, company_id,
+        )
+        if not row:
+            raise ValueError(f"Tenant '{tenant_id}' not found")
+        return tenant_from_row(row)
+
     async def list_users(self) -> list[User]:
         rows = await self._fetch_all_replica(
             """

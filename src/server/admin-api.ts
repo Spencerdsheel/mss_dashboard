@@ -7,6 +7,15 @@ export type AdminTenant = {
   country: string | null;
   status: string;
   locale: string;
+  company_id: string | null;
+};
+
+export type AdminCompany = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  tenant_count: number;
 };
 
 export type AdminUser = {
@@ -294,4 +303,30 @@ export async function adminUpdateSetting(
     token,
     { value }
   );
+}
+
+export async function adminListCompanies(token: string) {
+  return backendGet<AdminCompany[]>("/admin/companies", token);
+}
+
+export async function adminCreateCompany(
+  token: string,
+  data: { name: string; slug: string }
+) {
+  return backendPost<AdminCompany>("/admin/companies", token, data);
+}
+
+export async function adminUpdateCompany(
+  token: string,
+  company_id: string,
+  data: { name?: string; slug?: string }
+) {
+  return backendPatch<AdminCompany>(`/admin/companies/${company_id}`, token, data);
+}
+
+export async function adminListCompanyTenants(
+  token: string,
+  company_id: string
+) {
+  return backendGet<AdminTenant[]>(`/admin/companies/${company_id}/tenants`, token);
 }

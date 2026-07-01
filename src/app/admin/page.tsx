@@ -52,6 +52,11 @@ export default async function AdminPage() {
             <Button variant="outline">Metric Targets</Button>
           </Link>
           {isPlatformAdmin && (
+            <Link href="/admin/companies">
+              <Button variant="outline">Companies</Button>
+            </Link>
+          )}
+          {isPlatformAdmin && (
             <Link href="/admin/connections">
               <Button variant="outline">Connections</Button>
             </Link>

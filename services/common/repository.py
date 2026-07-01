@@ -93,6 +93,8 @@ class DashboardRepository(Protocol):
 
     async def list_users_for_company(self, company_id: str) -> list[User]: ...
 
+    async def assign_tenant_to_company(self, tenant_id: str, company_id: str) -> Tenant: ...
+
     async def list_tenants_for_admin(self, tenant_ids: tuple[str, ...]) -> list[Tenant]: ...
 
     async def list_users_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[User]: ...
@@ -366,6 +368,16 @@ class InMemoryDashboardRepository:
             [u for u in self.users if u.company_id == company_id],
             key=lambda u: u.email,
         )
+
+    async def assign_tenant_to_company(self, tenant_id: str, company_id: str) -> Tenant:
+        from dataclasses import replace as dc_replace
+        idx = next((i for i, t in enumerate(self.tenants) if t.id == tenant_id), None)
+        if idx is None:
+            raise ValueError(f"Tenant '{tenant_id}' not found")
+        updated = dc_replace(self.tenants[idx], company_id=company_id)
+        self.tenants = list(self.tenants)
+        self.tenants[idx] = updated
+        return updated
 
     async def list_tenants_for_admin(self, tenant_ids: tuple[str, ...]) -> list[Tenant]:
         tid_set = set(tenant_ids)

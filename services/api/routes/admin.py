@@ -123,6 +123,16 @@ class SettingUpdateRequest(BaseModel):
     value: str
 
 
+class CompanyCreateRequest(BaseModel):
+    name: str
+    slug: str
+
+
+class CompanyUpdateRequest(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+
+
 def require_admin_operation(repository: DashboardRepository, method_name: str):
     method = getattr(repository, method_name, None)
     if method is None:
@@ -600,3 +610,70 @@ async def update_setting(
     method = require_admin_operation(repository, "set_platform_setting")
     value = await method(key, request.value)
     return {"key": key, "value": value}
+
+
+# ── Company management (PLATFORM_ADMIN only) ────────────────────────────
+
+@router.get("/companies")
+async def list_companies(
+    _claims=Depends(require_platform_admin),
+    repository: DashboardRepository = Depends(get_repository),
+) -> list[dict]:
+    companies = await repository.list_companies()
+    result = []
+    for company in companies:
+        d = to_public_dict(company)
+        tenants = await repository.list_tenants_for_company(company.id)
+        d["tenant_count"] = len(tenants)
+        result.append(d)
+    return result
+
+
+@router.post("/companies")
+async def create_company(
+    request: CompanyCreateRequest,
+    _claims=Depends(require_platform_admin),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    name = request.name.strip()
+    slug = request.slug.strip().lower()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Company name is required")
+    if not slug:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Company slug is required")
+    import re
+    if not re.match(r"^[a-z0-9-]+$", slug):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Slug must be lowercase alphanumeric with hyphens only")
+    company_id = f"company_{slug}"
+    try:
+        company = await repository.create_company(company_id, name, slug)
+    except Exception as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Company slug already exists")
+        raise
+    return to_public_dict(company)
+
+
+@router.patch("/companies/{company_id}")
+async def update_company(
+    company_id: str,
+    request: CompanyUpdateRequest,
+    _claims=Depends(require_platform_admin),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    method = require_admin_operation(repository, "update_company")
+    try:
+        company = await method(company_id, request.name, request.slug)
+    except ValueError as exc:
+        raise NotFoundError(str(exc)) from exc
+    return to_public_dict(company)
+
+
+@router.get("/companies/{company_id}/tenants")
+async def list_company_tenants(
+    company_id: str,
+    _claims=Depends(require_platform_admin),
+    repository: DashboardRepository = Depends(get_repository),
+) -> list[dict]:
+    tenants = await repository.list_tenants_for_company(company_id)
+    return [to_public_dict(t) for t in tenants]
