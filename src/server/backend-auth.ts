@@ -8,6 +8,8 @@ export type BackendSession = {
     role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
     tenant_id: string | null;
     project_ids: string[];
+    company_id: string | null;
+    tenant_ids: string[];
   };
   token: string;
 };
@@ -33,6 +35,8 @@ export async function getBackendSession(): Promise<BackendSession | null> {
         role: payload.role,
         tenant_id: payload.tenant_id,
         project_ids: payload.project_ids || [],
+        company_id: payload.company_id ?? null,
+        tenant_ids: payload.tenant_ids || [],
       },
       token,
     };
@@ -50,6 +54,6 @@ export async function requireBackendSession(): Promise<BackendSession> {
 
 export async function requireBackendAdmin(): Promise<BackendSession> {
   const session = await requireBackendSession();
-  if (session.user.role !== "PLATFORM_ADMIN") redirect("/dashboard");
+  if (session.user.role !== "PLATFORM_ADMIN" && session.user.role !== "CLIENT_ADMIN") redirect("/dashboard");
   return session;
 }

@@ -36,7 +36,9 @@ export function AppShell({
 
   items.push({ href: "/admin", label: "Admin", adminOnly: true });
 
-  const filtered = items.filter((i) => !i.adminOnly || session.user.role === "PLATFORM_ADMIN");
+  const filtered = items.filter(
+    (i) => !i.adminOnly || session.user.role === "PLATFORM_ADMIN" || session.user.role === "CLIENT_ADMIN"
+  );
 
   return (
     <div className="min-h-screen bg-background">

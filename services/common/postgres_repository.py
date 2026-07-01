@@ -119,7 +119,8 @@ class PostgresDashboardRepository:
         """
         row = await self._fetch_one(
             """
-            SELECT user_id, tenant_id, email, name, role, project_ids, hashed_password, status
+            SELECT user_id, tenant_id, email, name, role, project_ids,
+                   hashed_password, status, company_id, tenant_ids
             FROM dashboard.users
             WHERE email = $1 AND status = 'active'
             """,
@@ -127,8 +128,6 @@ class PostgresDashboardRepository:
         )
 
         stored_hash = (row or {}).get("hashed_password") or self._DUMMY_HASH
-        # Always verify — if the row is missing or has no hash, the dummy hash
-        # will not match, keeping the timing profile identical.
         valid = verify_password(password, stored_hash)
 
         if not row or not row.get("hashed_password") or not valid:
@@ -142,6 +141,8 @@ class PostgresDashboardRepository:
             tenant_id=row.get("tenant_id"),
             hashed_password=row["hashed_password"],
             project_ids=tuple(row.get("project_ids") or []),
+            company_id=row.get("company_id"),
+            tenant_ids=tuple(row.get("tenant_ids") or []),
         )
 
     async def list_projects(self, claims: AuthClaims) -> list[Project]:
@@ -159,6 +160,25 @@ class PostgresDashboardRepository:
                 FROM dashboard.projects p
                 ORDER BY p.name ASC
                 """
+            )
+        elif claims.role == Role.CLIENT_ADMIN:
+            if not claims.tenant_ids:
+                return []
+            rows = await self._fetch_all(
+                """
+                SELECT p.tenant_id, p.project_id, p.name, p.slug, p.client_name,
+                       p.provider_kind, p.start_date, p.end_date,
+                       COALESCE((
+                           SELECT COUNT(*)
+                           FROM dashboard.visits v
+                           WHERE v.tenant_id = p.tenant_id
+                             AND v.project_id = p.project_id
+                       ), 0) AS visit_count
+                FROM dashboard.projects p
+                WHERE p.tenant_id = ANY($1)
+                ORDER BY p.name ASC
+                """,
+                list(claims.tenant_ids),
             )
         else:
             if claims.tenant_id is None or not claims.project_ids:
@@ -468,7 +488,7 @@ class PostgresDashboardRepository:
     async def list_users(self) -> list[User]:
         rows = await self._fetch_all_replica(
             """
-            SELECT user_id, tenant_id, email, name, role, project_ids, company_id
+            SELECT user_id, tenant_id, email, name, role, project_ids, company_id, tenant_ids
             FROM dashboard.users
             ORDER BY email ASC
             """
@@ -476,6 +496,42 @@ class PostgresDashboardRepository:
         if not rows:
             return self.auth_repository.list_users()
         return [user_from_row(row) for row in rows]
+
+    async def list_users_for_company(self, company_id: str) -> list[User]:
+        rows = await self._fetch_all(
+            """SELECT user_id, tenant_id, email, name, role, project_ids, company_id, tenant_ids
+               FROM dashboard.users
+               WHERE company_id = $1 AND status = 'active'
+               ORDER BY email ASC""",
+            company_id,
+        )
+        return [user_from_row(r) for r in rows]
+
+    async def list_tenants_for_admin(self, tenant_ids: tuple[str, ...]) -> list[Tenant]:
+        if not tenant_ids:
+            return []
+        rows = await self._fetch_all(
+            """SELECT tenant_id, name, slug, locale, company_id
+               FROM dashboard.tenants
+               WHERE tenant_id = ANY($1)
+               ORDER BY name ASC""",
+            list(tenant_ids),
+        )
+        return [tenant_from_row(r) for r in rows]
+
+    async def list_users_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[User]:
+        if not tenant_ids:
+            return []
+        rows = await self._fetch_all(
+            """SELECT user_id, tenant_id, email, name, role, project_ids,
+                      company_id, tenant_ids
+               FROM dashboard.users
+               WHERE status = 'active'
+                 AND (tenant_id = ANY($1) OR tenant_ids && $1::TEXT[])
+               ORDER BY email ASC""",
+            list(tenant_ids),
+        )
+        return [user_from_row(r) for r in rows]
 
     async def list_run_logs(self) -> list[RunLog]:
         rows = await self._fetch_all_replica(
@@ -621,14 +677,16 @@ class PostgresDashboardRepository:
         project_ids: list[str],
         password: str,
         company_id: str | None = None,
+        tenant_ids: list[str] | None = None,
     ) -> dict:
         user_id = f"user_{uuid4().hex}"
         hashed_pw = hash_password(password)
         await self._execute(
             """
             INSERT INTO dashboard.users
-                (user_id, tenant_id, email, name, role, project_ids, hashed_password, status, updated_at, company_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now(), $8)
+                (user_id, tenant_id, email, name, role, project_ids, hashed_password,
+                 status, updated_at, company_id, tenant_ids)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', now(), $8, $9)
             """,
             user_id,
             tenant_id,
@@ -638,6 +696,7 @@ class PostgresDashboardRepository:
             project_ids,
             hashed_pw,
             company_id,
+            list(tenant_ids or []),
         )
         return await self.get_user_metadata(user_id)
 
@@ -652,10 +711,13 @@ class PostgresDashboardRepository:
         status: str | None,
         company_id: str | None = None,
         password: str | None = None,
+        tenant_ids: list[str] | None = None,
     ) -> dict:
         row = await self._fetch_one("SELECT * FROM dashboard.users WHERE user_id = $1", user_id)
         if not row:
             raise ValueError("User not found")
+
+        resolved_tenant_ids = tenant_ids if tenant_ids is not None else list(row.get("tenant_ids") or [])
 
         if password is not None:
             hashed_pw = hash_password(password)
@@ -669,7 +731,8 @@ class PostgresDashboardRepository:
                     status = $5,
                     hashed_password = $6,
                     updated_at = now(),
-                    company_id = COALESCE($8, company_id)
+                    company_id = COALESCE($8, company_id),
+                    tenant_ids = $9
                 WHERE user_id = $7
                 """,
                 name if name is not None else row["name"],
@@ -680,6 +743,7 @@ class PostgresDashboardRepository:
                 hashed_pw,
                 user_id,
                 company_id,
+                resolved_tenant_ids,
             )
         else:
             await self._execute(
@@ -691,7 +755,8 @@ class PostgresDashboardRepository:
                     project_ids = $4,
                     status = $5,
                     updated_at = now(),
-                    company_id = COALESCE($7, company_id)
+                    company_id = COALESCE($7, company_id),
+                    tenant_ids = $8
                 WHERE user_id = $6
                 """,
                 name if name is not None else row["name"],
@@ -701,13 +766,14 @@ class PostgresDashboardRepository:
                 status if status is not None else row["status"],
                 user_id,
                 company_id,
+                resolved_tenant_ids,
             )
         return await self.get_user_metadata(user_id)
 
     async def get_user_metadata(self, user_id: str) -> dict:
         row = await self._fetch_one(
             """
-            SELECT user_id, tenant_id, email, name, role, project_ids, status
+            SELECT user_id, tenant_id, email, name, role, project_ids, status, company_id, tenant_ids
             FROM dashboard.users
             WHERE user_id = $1
             """,
@@ -1130,6 +1196,7 @@ def user_from_row(row: dict[str, Any]) -> User:
         hashed_password="",
         company_id=row.get("company_id"),
         project_ids=tuple(row.get("project_ids") or []),
+        tenant_ids=tuple(row.get("tenant_ids") or []),
     )
 
 

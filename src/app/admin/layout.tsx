@@ -1,8 +1,8 @@
-import { requireAdmin } from "@/server/rbac";
+import { requireAdminOrAbove } from "@/server/rbac";
 import { AppShell } from "@/components/app-shell";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireAdmin();
+  const session = await requireAdminOrAbove();
 
   let siteTitle = "iSN";
   try {

@@ -91,6 +91,12 @@ class DashboardRepository(Protocol):
 
     async def list_tenants_for_company(self, company_id: str) -> list[Tenant]: ...
 
+    async def list_users_for_company(self, company_id: str) -> list[User]: ...
+
+    async def list_tenants_for_admin(self, tenant_ids: tuple[str, ...]) -> list[Tenant]: ...
+
+    async def list_users_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[User]: ...
+
 
 class InMemoryDashboardRepository:
     """Small Phase 01 repository for auth/RBAC/API wiring tests.
@@ -139,14 +145,13 @@ class InMemoryDashboardRepository:
         if claims.role == Role.PLATFORM_ADMIN:
             return [_with_count(p) for p in sorted(self.projects, key=lambda p: p.name)]
         if claims.role == Role.CLIENT_ADMIN:
-            # CLIENT_ADMIN sees projects in tenants belonging to their company
-            if claims.company_id is None:
+            if not claims.tenant_ids:
                 return []
-            company_tenant_ids = {t.id for t in self.tenants if t.company_id == claims.company_id}
+            tid_set = set(claims.tenant_ids)
             return [
                 _with_count(p)
                 for p in sorted(
-                    [p for p in self.projects if p.tenant_id in company_tenant_ids],
+                    [p for p in self.projects if p.tenant_id in tid_set],
                     key=lambda p: p.name,
                 )
             ]
@@ -356,6 +361,25 @@ class InMemoryDashboardRepository:
             key=lambda t: t.name,
         )
 
+    async def list_users_for_company(self, company_id: str) -> list[User]:
+        return sorted(
+            [u for u in self.users if u.company_id == company_id],
+            key=lambda u: u.email,
+        )
+
+    async def list_tenants_for_admin(self, tenant_ids: tuple[str, ...]) -> list[Tenant]:
+        tid_set = set(tenant_ids)
+        return sorted([t for t in self.tenants if t.id in tid_set], key=lambda t: t.name)
+
+    async def list_users_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[User]:
+        tid_set = set(tenant_ids)
+        return sorted(
+            [u for u in self.users
+             if u.tenant_id in tid_set
+             or bool(set(u.tenant_ids) & tid_set)],
+            key=lambda u: u.email,
+        )
+
 
 def seed_phase01_repository(password: str = "Demo123!") -> InMemoryDashboardRepository:
     default_company = Company(id="company_default", name="Default Company", slug="default")
@@ -389,6 +413,17 @@ def seed_phase01_repository(password: str = "Demo123!") -> InMemoryDashboardRepo
             hashed_password=hash_password(password),
             company_id=default_company.id,
             project_ids=(),
+        ),
+        User(
+            id="user_client_admin",
+            email="clientadmin@demo.local",
+            name="Client Admin",
+            role=Role.CLIENT_ADMIN,
+            tenant_id=None,
+            hashed_password=hash_password(password),
+            company_id=default_company.id,
+            project_ids=(),
+            tenant_ids=(tenant_a.id,),
         ),
         User(
             id="user_client",

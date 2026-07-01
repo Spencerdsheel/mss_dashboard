@@ -72,6 +72,7 @@ export async function createUserAction(formData: FormData) {
   const role = formData.get("role") as string;
   const tenant_id = formData.get("tenant_id") as string;
   const project_ids = formData.get("project_ids") as string;
+  const tenant_ids = formData.get("tenant_ids") as string;
 
   try {
     await adminCreateUser(token, {
@@ -81,6 +82,7 @@ export async function createUserAction(formData: FormData) {
       role,
       tenant_id: tenant_id || null,
       project_ids: project_ids ? project_ids.split(",").map((s) => s.trim()) : [],
+      tenant_ids: tenant_ids ? tenant_ids.split(",").map((s) => s.trim()) : [],
     });
   } catch (error) {
     throw error;
@@ -115,6 +117,7 @@ export async function updateUserAction(
   const role = formData.get("role") as string;
   const tenant_id = formData.get("tenant_id") as string;
   const project_ids = formData.get("project_ids") as string;
+  const tenant_ids = formData.get("tenant_ids") as string;
   const password = formData.get("password") as string;
 
   try {
@@ -123,6 +126,7 @@ export async function updateUserAction(
       role,
       tenant_id: tenant_id || null,
       project_ids: project_ids ? project_ids.split(",").map((s) => s.trim()) : [],
+      tenant_ids: tenant_ids ? tenant_ids.split(",").map((s) => s.trim()) : [],
       password: password || undefined,
     });
   } catch (error) {

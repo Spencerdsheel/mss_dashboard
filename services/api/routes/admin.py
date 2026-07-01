@@ -18,10 +18,37 @@ _ALLOWED_ROLES = {r.value for r in Role}
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def require_admin_claims(claims=Depends(get_current_claims)):
+def require_platform_admin(claims=Depends(get_current_claims)):
+    """PLATFORM_ADMIN only — for settings, connections, cross-company ops."""
     if claims.role != Role.PLATFORM_ADMIN:
+        raise AuthorizationError("Platform admin role required")
+    return claims
+
+
+def require_client_admin_or_above(claims=Depends(get_current_claims)):
+    """CLIENT_ADMIN or PLATFORM_ADMIN — for company-scoped admin ops."""
+    if claims.role not in (Role.PLATFORM_ADMIN, Role.CLIENT_ADMIN):
         raise AuthorizationError("Admin role required")
     return claims
+
+
+async def _assert_company_access_to_tenant(
+    claims, tenant_id: str, repository: DashboardRepository
+) -> None:
+    if claims.role == Role.PLATFORM_ADMIN:
+        return
+    if tenant_id not in claims.tenant_ids:
+        raise AuthorizationError("Tenant not accessible")
+
+
+async def _assert_company_access_to_project(
+    claims, project_id: str, repository: DashboardRepository
+) -> None:
+    if claims.role == Role.PLATFORM_ADMIN:
+        return
+    projects = await repository.list_projects(claims)
+    if not any(p.id == project_id for p in projects):
+        raise AuthorizationError("Project not accessible")
 
 
 class TenantCreateRequest(BaseModel):
@@ -50,6 +77,7 @@ class UserCreateRequest(BaseModel):
     role: str = "TENANT_USER"
     tenant_id: str | None = None
     project_ids: list[str] = []
+    tenant_ids: list[str] = []
     password: str
 
 
@@ -58,6 +86,7 @@ class UserUpdateRequest(BaseModel):
     role: str | None = None
     tenant_id: str | None = None
     project_ids: list[str] | None = None
+    tenant_ids: list[str] | None = None
     status: str | None = None
     password: str | None = None
 
@@ -162,19 +191,22 @@ async def _validate_user_fields(
 
 @router.get("/tenants")
 async def list_tenants(
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
-    return [to_public_dict(tenant) for tenant in await repository.list_tenants()]
+    if claims.role == Role.PLATFORM_ADMIN:
+        return [to_public_dict(t) for t in await repository.list_tenants()]
+    return [to_public_dict(t) for t in await repository.list_tenants_for_admin(claims.tenant_ids)]
 
 
 @router.get("/tenants/{tenant_id}/projects")
 async def list_tenant_projects(
     tenant_id: str,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
-    projects = await repository.list_projects(_claims)
+    await _assert_company_access_to_tenant(claims, tenant_id, repository)
+    projects = await repository.list_projects(claims)
     tenant_projects = [to_public_dict(p) for p in projects if p.tenant_id == tenant_id]
     return tenant_projects
 
@@ -184,9 +216,10 @@ async def update_project(
     tenant_id: str,
     project_id: str,
     request: ProjectUpdateRequest,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
+    await _assert_company_access_to_tenant(claims, tenant_id, repository)
     method = require_admin_operation(repository, "update_project")
     try:
         return to_public_dict(
@@ -199,7 +232,7 @@ async def update_project(
 @router.post("/tenants")
 async def create_tenant(
     request: TenantCreateRequest,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
     method = require_admin_operation(repository, "create_tenant")
@@ -210,7 +243,7 @@ async def create_tenant(
 async def update_tenant(
     tenant_id: str,
     request: TenantUpdateRequest,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
     method = require_admin_operation(repository, "update_tenant")
@@ -223,9 +256,10 @@ async def update_tenant(
 @router.get("/tenants/{tenant_id}/shopmetrics-connection")
 async def get_shopmetrics_connection(
     tenant_id: str,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
+    await _assert_company_access_to_tenant(claims, tenant_id, repository)
     method = require_admin_operation(repository, "get_provider_connection")
     try:
         return await method(tenant_id)
@@ -237,7 +271,7 @@ async def get_shopmetrics_connection(
 async def update_shopmetrics_connection(
     tenant_id: str,
     request: ProviderConnectionRequest,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     repository: DashboardRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> dict:
@@ -249,7 +283,7 @@ async def update_shopmetrics_connection(
             client_id=request.client_id,
             client_secret=request.client_secret,
             status=request.status,
-            encryption_key=settings.secret_encryption_key,  # S1: use dedicated key
+            encryption_key=settings.secret_encryption_key,
             display_name=request.display_name,
         )
     except ValueError as exc:
@@ -259,7 +293,7 @@ async def update_shopmetrics_connection(
 @router.post("/tenants/{tenant_id}/refresh")
 async def refresh_tenant(
     tenant_id: str,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     task = run_tenant_refresh.delay(tenant_id, settings.database_url)
@@ -273,7 +307,7 @@ async def refresh_tenant(
 @router.get("/tasks/{task_id}")
 async def get_task_status(
     task_id: str,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
 ) -> dict:
     result = AsyncResult(task_id, app=celery_app)
     response = {
@@ -290,7 +324,7 @@ async def get_task_status(
 @router.get("/tenants/{tenant_id}/scheduled-refresh")
 async def get_scheduled_refresh_status(
     tenant_id: str,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     import redis
@@ -311,7 +345,7 @@ async def get_scheduled_refresh_status(
 async def set_scheduled_refresh_status(
     tenant_id: str,
     request: dict,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     import redis
@@ -328,7 +362,7 @@ async def set_scheduled_refresh_status(
 
 @router.get("/runs")
 async def list_runs(
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
     return [to_public_dict(run) for run in await repository.list_run_logs()]
@@ -336,26 +370,47 @@ async def list_runs(
 
 @router.get("/users")
 async def list_users(
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
-    return [to_public_dict(user) for user in await repository.list_users()]
+    if claims.role == Role.PLATFORM_ADMIN:
+        return [to_public_dict(user) for user in await repository.list_users()]
+    return [to_public_dict(user) for user in await repository.list_users_for_tenants(claims.tenant_ids)]
 
 
 @router.post("/users")
 async def create_user(
     request: UserCreateRequest,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
-    # S8: validate role enum, tenant existence, and cross-tenant project assignment
+    if claims.role == Role.CLIENT_ADMIN and request.role == "PLATFORM_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create PLATFORM_ADMIN users",
+        )
     await _validate_user_fields(
         role=request.role,
         tenant_id=request.tenant_id,
         project_ids=request.project_ids,
         repository=repository,
     )
+    if claims.role == Role.CLIENT_ADMIN:
+        if request.tenant_id and request.tenant_id not in claims.tenant_ids:
+            raise AuthorizationError("Tenant not accessible")
+        for tid in request.tenant_ids:
+            if tid not in claims.tenant_ids:
+                raise AuthorizationError("Tenant not accessible")
     method = require_admin_operation(repository, "create_user_metadata")
+    if claims.role == Role.CLIENT_ADMIN:
+        company_id = claims.company_id
+    elif request.tenant_id:
+        tenant = next(
+            (t for t in await repository.list_tenants() if t.id == request.tenant_id), None
+        )
+        company_id = tenant.company_id if tenant else None
+    else:
+        company_id = None
     return await method(
         email=request.email,
         name=request.name,
@@ -363,6 +418,8 @@ async def create_user(
         tenant_id=request.tenant_id,
         project_ids=request.project_ids,
         password=request.password,
+        company_id=company_id,
+        tenant_ids=request.tenant_ids,
     )
 
 
@@ -370,16 +427,31 @@ async def create_user(
 async def update_user(
     user_id: str,
     request: UserUpdateRequest,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
-    # S8: validate role enum, tenant existence, and cross-tenant project assignment
+    if claims.role == Role.CLIENT_ADMIN and request.role == "PLATFORM_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot assign PLATFORM_ADMIN role",
+        )
+    if claims.role == Role.CLIENT_ADMIN:
+        tenant_users = await repository.list_users_for_tenants(claims.tenant_ids)
+        if not any(u.id == user_id for u in tenant_users):
+            raise AuthorizationError("User not accessible")
     await _validate_user_fields(
         role=request.role,
         tenant_id=request.tenant_id,
         project_ids=request.project_ids,
         repository=repository,
     )
+    if claims.role == Role.CLIENT_ADMIN:
+        if request.tenant_id and request.tenant_id not in claims.tenant_ids:
+            raise AuthorizationError("Tenant not accessible")
+        if request.tenant_ids:
+            for tid in request.tenant_ids:
+                if tid not in claims.tenant_ids:
+                    raise AuthorizationError("Tenant not accessible")
     method = require_admin_operation(repository, "update_user_metadata")
     try:
         return await method(
@@ -390,6 +462,7 @@ async def update_user(
             project_ids=request.project_ids,
             status=request.status,
             password=request.password,
+            tenant_ids=request.tenant_ids,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -398,7 +471,7 @@ async def update_user(
 @router.post("/users/{user_id}/password-reset")
 async def issue_password_reset(
     user_id: str,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
     """Admin-only: issue a one-time password-reset token for a user.
@@ -413,6 +486,11 @@ async def issue_password_reset(
     Raw token is never logged.
     """
     from datetime import datetime, timezone, timedelta
+
+    if claims.role == Role.CLIENT_ADMIN:
+        tenant_users = await repository.list_users_for_tenants(claims.tenant_ids)
+        if not any(u.id == user_id for u in tenant_users):
+            raise AuthorizationError("User not accessible")
 
     get_meta = require_admin_operation(repository, "get_user_metadata")
     try:
@@ -444,9 +522,10 @@ async def issue_password_reset(
 @router.get("/projects/{project_id}/photo-slots")
 async def get_photo_slots(
     project_id: str,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
+    await _assert_company_access_to_project(claims, project_id, repository)
     method = require_admin_operation(repository, "list_photo_slot_labels")
     try:
         return await method(project_id)
@@ -458,9 +537,10 @@ async def get_photo_slots(
 async def update_photo_slots(
     project_id: str,
     request: PhotoSlotUpdateRequest,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
+    await _assert_company_access_to_project(claims, project_id, repository)
     method = require_admin_operation(repository, "update_photo_slot_labels")
     try:
         return await method(project_id, [item.model_dump() for item in request.labels])
@@ -471,9 +551,10 @@ async def update_photo_slots(
 @router.get("/projects/{project_id}/metrics")
 async def get_project_metrics(
     project_id: str,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
+    await _assert_company_access_to_project(claims, project_id, repository)
     method = require_admin_operation(repository, "list_project_metrics")
     try:
         return await method(project_id)
@@ -485,9 +566,10 @@ async def get_project_metrics(
 async def update_project_metrics(
     project_id: str,
     request: ProjectMetricUpdateRequest,
-    _claims=Depends(require_admin_claims),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
+    await _assert_company_access_to_project(claims, project_id, repository)
     method = require_admin_operation(repository, "update_project_metrics")
     try:
         return await method(project_id, [item.model_dump() for item in request.metrics])
@@ -498,7 +580,7 @@ async def update_project_metrics(
 @router.get("/settings/{key}")
 async def get_setting(
     key: str,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
     method = require_admin_operation(repository, "get_platform_setting")
@@ -512,7 +594,7 @@ async def get_setting(
 async def update_setting(
     key: str,
     request: SettingUpdateRequest,
-    _claims=Depends(require_admin_claims),
+    _claims=Depends(require_platform_admin),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
     method = require_admin_operation(repository, "set_platform_setting")

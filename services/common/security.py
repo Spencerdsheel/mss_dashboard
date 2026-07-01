@@ -66,6 +66,7 @@ def create_access_token(
         "role": user.role.value,
         "project_ids": list(user.project_ids),
         "company_id": user.company_id,
+        "tenant_ids": list(user.tenant_ids),
         "jti": str(uuid.uuid4()),
         "iat": issued_at,
         "exp": issued_at + settings.jwt_ttl_seconds,
@@ -159,15 +160,16 @@ def decode_access_token(
         project_ids = tuple(str(p) for p in payload.get("project_ids", []))
         tenant_id = payload.get("tenant_id")
         company_id = payload.get("company_id")
+        tenant_ids = tuple(str(t) for t in payload.get("tenant_ids", []))
 
-        # TENANT_USER tokens must carry a tenant_id claim.
-        # A TENANT_USER token without tenant_id would bypass tenant isolation.
         if role == Role.TENANT_USER and not tenant_id:
             raise AuthError("TENANT_USER token missing required tenant_id claim")
 
-        # CLIENT_ADMIN tokens must carry a company_id claim.
         if role == Role.CLIENT_ADMIN and not company_id:
             raise AuthError("CLIENT_ADMIN token missing required company_id claim")
+
+        if role == Role.CLIENT_ADMIN and not tenant_ids:
+            raise AuthError("CLIENT_ADMIN token missing required tenant_ids claim")
 
         return AuthClaims(
             user_id=str(payload["sub"]),
@@ -176,6 +178,7 @@ def decode_access_token(
             tenant_id=str(tenant_id) if tenant_id is not None else None,
             company_id=str(company_id) if company_id is not None else None,
             project_ids=project_ids,
+            tenant_ids=tenant_ids,
         )
     except AuthError:
         raise

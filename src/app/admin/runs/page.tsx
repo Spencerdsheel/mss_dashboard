@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { RunLogList } from "@/components/admin/run-log-list";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { requireAdmin } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRunsPage() {
+  await requireAdmin();
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value || "";
 

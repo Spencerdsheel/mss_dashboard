@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS dashboard.users (
     name TEXT,
     role TEXT NOT NULL,
     project_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    tenant_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     status TEXT NOT NULL DEFAULT 'active',
     hashed_password TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

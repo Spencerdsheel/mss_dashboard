@@ -24,16 +24,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createUserAction, updateUserAction, getProjectsForTenant, issuePasswordResetAction } from "./actions";
+import { ROLE_LABELS } from "@/types/role";
 
 interface UsersClientProps {
   users: AdminUser[];
   tenants: AdminTenant[];
+  callerRole?: string;
 }
 
 type ResetResult = { token: string; expires_at: string; user_id: string } | null;
 
-export function UsersClient({ users, tenants }: UsersClientProps) {
+export function UsersClient({ users, tenants, callerRole }: UsersClientProps) {
   const router = useRouter();
+  const tenantMap = Object.fromEntries(tenants.map((t) => [t.id, t.name]));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +84,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
     role: "TENANT_USER",
     tenant_id: "none" as string | null,
     project_ids: [] as string[],
+    tenant_ids: [] as string[],
   });
 
   const handleOpenCreate = () => {
@@ -93,6 +97,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
       role: "TENANT_USER",
       tenant_id: "none",
       project_ids: [],
+      tenant_ids: [],
     });
     setError(null);
     setDialogOpen(true);
@@ -108,6 +113,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
       role: user.role,
       tenant_id: user.tenant_id || "none",
       project_ids: user.project_ids || [],
+      tenant_ids: user.tenant_ids || [],
     });
     setError(null);
 
@@ -149,7 +155,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
   };
 
   const handleRoleChange = async (value: string) => {
-    setFormData({ ...formData, role: value, project_ids: [] });
+    setFormData({ ...formData, role: value, project_ids: [], tenant_ids: [] });
     setAvailableProjects([]);
 
     if (value === "TENANT_USER" && formData.tenant_id) {
@@ -181,14 +187,16 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
         data.set("name", formData.name);
         data.set("password", formData.password);
         data.set("role", formData.role);
-        data.set("tenant_id", formData.tenant_id || "");
-        data.set("project_ids", formData.project_ids.join(","));
+        data.set("tenant_id", formData.role === "CLIENT_ADMIN" ? "" : (formData.tenant_id || ""));
+        data.set("project_ids", formData.role === "CLIENT_ADMIN" ? "" : formData.project_ids.join(","));
+        data.set("tenant_ids", formData.tenant_ids.join(","));
         await createUserAction(data);
       } else {
         data.set("name", formData.name);
         data.set("role", formData.role);
-        data.set("tenant_id", formData.tenant_id || "");
-        data.set("project_ids", formData.project_ids.join(","));
+        data.set("tenant_id", formData.role === "CLIENT_ADMIN" ? "" : (formData.tenant_id || ""));
+        data.set("project_ids", formData.role === "CLIENT_ADMIN" ? "" : formData.project_ids.join(","));
+        data.set("tenant_ids", formData.tenant_ids.join(","));
         await updateUserAction(editingUser.id, data);
       }
       setDialogOpen(false);
@@ -230,7 +238,7 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
               <th className="py-3 px-4">Email</th>
               <th className="py-3 px-4">Name</th>
               <th className="py-3 px-4">Role</th>
-              <th className="py-3 px-4">Tenant</th>
+              <th className="py-3 px-4">Tenants</th>
               <th className="py-3 px-4">Projects</th>
               <th className="py-3 px-4">Actions</th>
             </tr>
@@ -242,11 +250,13 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
                 <td className="py-3 px-4">{user.name || "—"}</td>
                 <td className="py-3 px-4">
                   <Badge variant={user.role === "PLATFORM_ADMIN" ? "brand" : "secondary"}>
-                    {user.role}
+                    {ROLE_LABELS[user.role] ?? user.role}
                   </Badge>
                 </td>
-                <td className="py-3 px-4 font-mono text-xs">
-                  {user.tenant_id || "—"}
+                <td className="py-3 px-4 text-xs">
+                  {user.tenant_ids && user.tenant_ids.length > 0
+                    ? user.tenant_ids.map((tid) => tenantMap[tid] || tid).join(", ")
+                    : "—"}
                 </td>
                 <td className="py-3 px-4 font-mono text-xs">
                   {user.project_ids.join(", ") || "—"}
@@ -364,79 +374,123 @@ export function UsersClient({ users, tenants }: UsersClientProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="PLATFORM_ADMIN">Platform Admin</SelectItem>
-                  <SelectItem value="CLIENT_ADMIN">Client Admin</SelectItem>
-                  <SelectItem value="TENANT_USER">Tenant User</SelectItem>
+                  {callerRole !== "CLIENT_ADMIN" && (
+                    <SelectItem value="PLATFORM_ADMIN">Platform Admin</SelectItem>
+                  )}
+                  <SelectItem value="CLIENT_ADMIN">Admin</SelectItem>
+                  <SelectItem value="TENANT_USER">User</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="tenant">Tenant</Label>
-              <Select
-                value={formData.tenant_id || ""}
-                onValueChange={handleTenantChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select tenant" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No tenant</SelectItem>
-                  {tenants.map((tenant) => (
-                    <SelectItem key={tenant.id} value={tenant.id}>
-                      {tenant.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.role === "TENANT_USER" && formData.tenant_id && (
+            {formData.role === "CLIENT_ADMIN" ? (
               <div className="space-y-2">
-                <Label>Projects</Label>
-                {isLoadingProjects ? (
-                  <p className="text-sm text-muted-foreground">Loading projects...</p>
-                ) : availableProjects.length > 0 ? (
-                  <>
-                    <div className="rounded-md border p-3 space-y-2 max-h-40 overflow-y-auto">
-                      {availableProjects.map((project) => (
-                        <label
-                          key={project.id}
-                          className="flex items-center gap-2 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={formData.project_ids.includes(project.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormData({
-                                  ...formData,
-                                  project_ids: [...formData.project_ids, project.id],
-                                });
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  project_ids: formData.project_ids.filter(
-                                    (id) => id !== project.id
-                                  ),
-                                });
-                              }
-                            }}
-                            className="h-4 w-4"
-                          />
-                          <span className="text-sm">{project.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {formData.project_ids.length} of {availableProjects.length} projects selected
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No projects available for this tenant
-                  </p>
-                )}
+                <Label>Assigned Tenants</Label>
+                <div className="rounded-md border p-3 space-y-2 max-h-40 overflow-y-auto">
+                  {tenants.map((tenant) => (
+                    <label
+                      key={tenant.id}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.tenant_ids.includes(tenant.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({
+                              ...formData,
+                              tenant_ids: [...formData.tenant_ids, tenant.id],
+                            });
+                          } else {
+                            setFormData({
+                              ...formData,
+                              tenant_ids: formData.tenant_ids.filter(
+                                (id) => id !== tenant.id
+                              ),
+                            });
+                          }
+                        }}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm">{tenant.name}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formData.tenant_ids.length} of {tenants.length} tenants selected.
+                  Admin automatically accesses all projects of assigned tenants.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="tenant">Tenant</Label>
+                  <Select
+                    value={formData.tenant_id || ""}
+                    onValueChange={handleTenantChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select tenant" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No tenant</SelectItem>
+                      {tenants.map((tenant) => (
+                        <SelectItem key={tenant.id} value={tenant.id}>
+                          {tenant.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.role === "TENANT_USER" && formData.tenant_id && (
+                  <div className="space-y-2">
+                    <Label>Projects</Label>
+                    {isLoadingProjects ? (
+                      <p className="text-sm text-muted-foreground">Loading projects...</p>
+                    ) : availableProjects.length > 0 ? (
+                      <>
+                        <div className="rounded-md border p-3 space-y-2 max-h-40 overflow-y-auto">
+                          {availableProjects.map((project) => (
+                            <label
+                              key={project.id}
+                              className="flex items-center gap-2 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.project_ids.includes(project.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData({
+                                      ...formData,
+                                      project_ids: [...formData.project_ids, project.id],
+                                    });
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      project_ids: formData.project_ids.filter(
+                                        (id) => id !== project.id
+                                      ),
+                                    });
+                                  }
+                                }}
+                                className="h-4 w-4"
+                              />
+                              <span className="text-sm">{project.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {formData.project_ids.length} of {availableProjects.length} projects selected
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No projects available for this tenant
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
             <div className="flex gap-2 pt-4">
               <Button

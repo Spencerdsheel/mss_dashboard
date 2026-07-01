@@ -38,6 +38,7 @@ class AuthClaims:
     company_id: str | None = None
     project_ids: tuple[str, ...] = field(default_factory=tuple)
     email: str | None = None
+    tenant_ids: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ class User:
     hashed_password: str
     company_id: str | None = None
     project_ids: tuple[str, ...] = field(default_factory=tuple)
+    tenant_ids: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

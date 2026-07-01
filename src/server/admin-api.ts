@@ -16,7 +16,9 @@ export type AdminUser = {
   role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
   tenant_id: string | null;
   project_ids: string[];
+  tenant_ids: string[];
   status: string;
+  company_id: string | null;
 };
 
 export type AdminRunLog = {
@@ -76,10 +78,11 @@ export async function adminCreateUser(
   data: {
     email: string;
     name?: string;
-    password: string;  // Required for creation
+    password: string;
     role?: string;
     tenant_id?: string | null;
     project_ids?: string[];
+    tenant_ids?: string[];
   }
 ) {
   return backendPost<AdminUser>("/admin/users", token, data);
@@ -93,8 +96,9 @@ export async function adminUpdateUser(
     role?: string | null;
     tenant_id?: string | null;
     project_ids?: string[] | null;
+    tenant_ids?: string[] | null;
     status?: string | null;
-    password?: string;  // Optional password update
+    password?: string;
   }
 ) {
   return backendPatch<AdminUser>(`/admin/users/${user_id}`, token, data);
