@@ -2,9 +2,20 @@
 
 import { useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { GeoHeatMap } from "@/components/charts/geo-heat-map";
+import dynamic from "next/dynamic";
 import { MapPin, BarChart3, TrendingUp } from "lucide-react";
-import { LazyChart } from "@/components/lazy-chart";
+
+const GeoHeatMap = dynamic(
+  () => import("@/components/charts/geo-heat-map").then((m) => m.GeoHeatMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        Loading map...
+      </div>
+    ),
+  }
+);
 
 export function GeographyGrid({
   projectId,
@@ -72,9 +83,7 @@ export function GeographyGrid({
       <div className="col-span-8 card-ventriloc flex flex-col p-3 min-h-0">
         <span className="text-sm font-medium text-foreground shrink-0">Geographic Distribution</span>
         <div className="flex-1 min-h-0 mt-1">
-          <LazyChart>
-            <GeoHeatMap data={mapData} hoveredCity={hoveredCity} onCityHover={handleCityHover} />
-          </LazyChart>
+          <GeoHeatMap data={mapData} hoveredCity={hoveredCity} onCityHover={handleCityHover} />
         </div>
       </div>
 

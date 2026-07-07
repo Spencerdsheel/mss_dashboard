@@ -7,7 +7,7 @@ from services.api.exceptions import NotFoundError
 from services.common.cache import CacheAside
 from services.common.repository import DashboardRepository, to_client_visit_dict, to_public_dict
 from services.common.settings import Settings
-from services.common.tenancy import AuthorizationError
+from services.common.tenancy import AuthorizationError, assert_project_access
 
 router = APIRouter(tags=["projects"])
 
@@ -39,14 +39,18 @@ async def project_summary(
     repository: DashboardRepository = Depends(get_repository),
     cache: CacheAside = Depends(_init_cache),
 ) -> dict:
-    cache_key = f"summary:{claims.tenant_id}:{project_id}"
+    # Authorize before touching the cache so a cache hit can never serve a project the
+    # caller is not allowed to see. Key by the project's own tenant (not the caller's, which
+    # is None for CLIENT_ADMIN) so tenant-scoped invalidation still matches.
+    try:
+        project = assert_project_access(claims, await repository.get_project(project_id))
+    except AuthorizationError as exc:
+        raise _not_found(exc) from exc
+    cache_key = f"summary:{project.tenant_id}:{project_id}"
     cached = await cache.get(cache_key, endpoint="project_summary")
     if cached is not None:
         return cached
-    try:
-        result = to_public_dict(await repository.get_project_summary(claims, project_id))
-    except AuthorizationError as exc:
-        raise _not_found(exc) from exc
+    result = to_public_dict(await repository.get_project_summary(claims, project_id))
     await cache.set(cache_key, result, ttl=300)
     return result
 
@@ -58,14 +62,16 @@ async def list_visits(
     repository: DashboardRepository = Depends(get_repository),
     cache: CacheAside = Depends(_init_cache),
 ) -> list[dict]:
-    cache_key = f"visits:{claims.tenant_id}:{project_id}"
+    # Authorize before the cache read; key by the project's tenant (see project_summary).
+    try:
+        project = assert_project_access(claims, await repository.get_project(project_id))
+    except AuthorizationError as exc:
+        raise _not_found(exc) from exc
+    cache_key = f"visits:{project.tenant_id}:{project_id}"
     cached = await cache.get(cache_key, endpoint="project_visits")
     if cached is not None:
         return cached
-    try:
-        result = await repository.list_visits(claims, project_id)
-    except AuthorizationError as exc:
-        raise _not_found(exc) from exc
+    result = await repository.list_visits(claims, project_id)
     await cache.set(cache_key, result, ttl=120)
     return result
 

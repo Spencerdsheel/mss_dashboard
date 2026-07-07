@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncpg
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from services.api.dependencies import get_current_claims, get_repository, get_settings
-from services.api.exceptions import AuthorizationError, NotFoundError
+from services.api.exceptions import AuthorizationError, ConflictError, NotFoundError
 from services.common.models import Role
 from services.common.repository import DashboardRepository, to_public_dict
 from services.common.settings import Settings
@@ -421,16 +422,19 @@ async def create_user(
         company_id = tenant.company_id if tenant else None
     else:
         company_id = None
-    return await method(
-        email=request.email,
-        name=request.name,
-        role=request.role,
-        tenant_id=request.tenant_id,
-        project_ids=request.project_ids,
-        password=request.password,
-        company_id=company_id,
-        tenant_ids=request.tenant_ids,
-    )
+    try:
+        return await method(
+            email=request.email,
+            name=request.name,
+            role=request.role,
+            tenant_id=request.tenant_id,
+            project_ids=request.project_ids,
+            password=request.password,
+            company_id=company_id,
+            tenant_ids=request.tenant_ids,
+        )
+    except asyncpg.exceptions.UniqueViolationError as exc:
+        raise ConflictError("A user with this email already exists") from exc
 
 
 @router.patch("/users/{user_id}")

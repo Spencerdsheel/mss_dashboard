@@ -23,22 +23,16 @@ def require_client_admin_or_above(claims: AuthClaims) -> None:
 require_admin = require_platform_admin
 
 
-def can_access_project(
-    claims: AuthClaims,
-    project: Project | None,
-    *,
-    tenant_company_id: str | None = None,
-) -> bool:
+def can_access_project(claims: AuthClaims, project: Project | None) -> bool:
     if project is None:
         return False
     if claims.role == Role.PLATFORM_ADMIN:
         return True
     if claims.role == Role.CLIENT_ADMIN:
-        # CLIENT_ADMIN can see projects in tenants belonging to their company.
-        # The caller must pass the tenant's company_id for verification.
-        if tenant_company_id is None or claims.company_id is None:
-            return False
-        return tenant_company_id == claims.company_id
+        # CLIENT_ADMIN is scoped by the tenants assigned to them (Sprint 07b: tenant_ids
+        # array). This matches list_projects and the admin route guards, so a project the
+        # CLIENT_ADMIN can list is also one they can read.
+        return project.tenant_id in claims.tenant_ids
     if claims.role == Role.TENANT_USER:
         if claims.tenant_id is None:
             return False
@@ -48,12 +42,7 @@ def can_access_project(
     return False
 
 
-def assert_project_access(
-    claims: AuthClaims,
-    project: Project | None,
-    *,
-    tenant_company_id: str | None = None,
-) -> Project:
-    if not can_access_project(claims, project, tenant_company_id=tenant_company_id):
+def assert_project_access(claims: AuthClaims, project: Project | None) -> Project:
+    if not can_access_project(claims, project):
         raise AuthorizationError("Project not found or not accessible")
     return project
