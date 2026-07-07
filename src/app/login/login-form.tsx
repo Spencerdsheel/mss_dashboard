@@ -29,7 +29,7 @@ export function LoginForm({
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="email" className="text-white/80">Email</Label>
+        <Label htmlFor="email">Email</Label>
         <Input
           id="email"
           name="email"
@@ -37,11 +37,10 @@ export function LoginForm({
           autoComplete="email"
           placeholder=""
           required
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password" className="text-white/80">Password</Label>
+        <Label htmlFor="password">Password</Label>
         <Input
           id="password"
           name="password"
@@ -49,7 +48,6 @@ export function LoginForm({
           autoComplete="current-password"
           placeholder=""
           required
-          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
         />
       </div>
       {initialError && (
@@ -60,8 +58,8 @@ export function LoginForm({
       <Button className="w-full bg-[#ff682c] text-white hover:bg-[#ff682c]/90" disabled={isPending}>
         {isPending ? "Signing in…" : "Sign in"}
       </Button>
-      <p className="text-center text-sm text-white/50">
-        <a href="/reset-password" className="underline underline-offset-4 hover:text-white">
+      <p className="text-center text-sm text-muted-foreground">
+        <a href="/reset-password" className="underline underline-offset-4 hover:text-foreground">
           Forgot password?
         </a>
       </p>

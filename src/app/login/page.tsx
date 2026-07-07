@@ -18,36 +18,51 @@ export default async function LoginPage({
   const hasError = params.error === "invalid_credentials";
 
   return (
-    <div className="flex min-h-screen">
-      <div className="relative hidden w-[60%] flex-col justify-between overflow-hidden bg-[#020617] p-12 text-white md:flex">
-        <DataPulseMap />
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 text-lg font-semibold tracking-tight">
-            {/* TODO: Replace with <Image src="/isn-logo.svg"> when logo file is provided */}
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-brand-foreground text-xs font-bold">
-              iSN
-            </div>
-            <span>iSN Dashboard</span>
+    <div className="flex min-h-screen bg-background">
+      {/* LEFT PANEL — map */}
+      <div className="hidden flex-[1.35] flex-col px-12 pb-8 pt-10 md:flex">
+        <div className="flex items-center gap-3.5">
+          <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand text-brand-foreground text-sm font-bold">
+            iSN
           </div>
+          <span className="text-xl font-semibold tracking-tight text-foreground">
+            iSN Dashboard
+          </span>
         </div>
-        <div className="relative z-10 space-y-6">
-          <p className="text-3xl font-semibold leading-tight tracking-tight">
+
+        <div className="relative my-5 min-h-0 flex-1">
+          <DataPulseMap />
+        </div>
+
+        <div>
+          <p className="text-[34px] font-bold leading-tight tracking-tight text-foreground">
             Real-time unified retail execution
           </p>
-          <p className="text-sm leading-relaxed text-white/50">
+          <p className="mt-2.5 text-base text-muted-foreground">
             Monitor mystery shopping visits across regions in real time.
           </p>
         </div>
-        <div className="relative z-10 text-xs text-white/50">
+
+        <div className="mt-6 text-sm text-muted-foreground/60">
           © {new Date().getFullYear()} iSN Dashboard
         </div>
       </div>
 
-      <div className="flex w-full items-center justify-center bg-[#020617] p-6 text-white md:w-[40%]">
-        <div className="w-full max-w-sm space-y-6">
+      {/* RIGHT PANEL — form */}
+      <div className="flex flex-1 items-center justify-center p-6 md:px-[72px]">
+        <div className="w-full max-w-[540px] space-y-6">
+          <div className="flex items-center justify-center gap-3 md:hidden">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-brand-foreground text-xs font-bold">
+              iSN
+            </div>
+            <span className="text-lg font-semibold tracking-tight text-foreground">
+              iSN Dashboard
+            </span>
+          </div>
+
           <div className="space-y-2 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-            <p className="text-sm text-white/50">
+            <h1 className="text-[30px] font-bold tracking-tight text-foreground">Sign in</h1>
+            <p className="text-base text-muted-foreground">
               Use your credentials to access the dashboard.
             </p>
           </div>
