@@ -227,3 +227,5 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 rough.txt
 .claude/
+.agent/
+knowledge_base/
