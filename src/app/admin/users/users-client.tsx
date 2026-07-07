@@ -218,21 +218,18 @@ export function UsersClient({ users, tenants, callerRole }: UsersClientProps) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push("/admin")}>
-            Back to Admin
-          </Button>
           <Button onClick={handleOpenCreate}>Create User</Button>
         </div>
       </div>
 
       {error && (
-        <div className="p-3 rounded-md text-sm bg-red-100 text-red-800">
+        <div className="p-3 rounded-md text-sm bg-danger/10 text-danger">
           {error}
         </div>
       )}
 
-      <div className="rounded-md border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-sm" style={{ minWidth: "800px" }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
               <th className="py-3 px-4">Email</th>
@@ -279,30 +276,30 @@ export function UsersClient({ users, tenants, callerRole }: UsersClientProps) {
                     </Button>
                   </div>
                   {resetPanelUserId === user.id && (
-                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs space-y-2 max-w-sm">
+                    <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 p-3 text-xs space-y-2 max-w-sm">
                       {issuingReset && (
                         <p className="text-muted-foreground">Generating reset code…</p>
                       )}
                       {resetError && (
-                        <p className="text-red-700">{resetError}</p>
+                        <p className="text-danger">{resetError}</p>
                       )}
                       {resetResult && (
                         <>
-                          <p className="font-medium text-amber-900">
+                          <p className="font-medium text-warning">
                             Reset code generated — share this with the user securely (e.g. direct message or phone). Do not send via email in plaintext.
                           </p>
                           <div className="flex items-center gap-2">
-                            <code className="flex-1 break-all rounded bg-white border px-2 py-1 text-xs font-mono select-all">
+                            <code className="flex-1 break-all rounded bg-background border px-2 py-1 text-xs font-mono select-all">
                               {resetResult.token}
                             </code>
                             <Button size="sm" variant="outline" onClick={handleCopyToken}>
                               {copied ? "Copied!" : "Copy"}
                             </Button>
                           </div>
-                          <p className="text-amber-700">
+                          <p className="text-warning">
                             Expires: {new Date(resetResult.expires_at).toLocaleString()}
                           </p>
-                          <p className="text-amber-700">
+                          <p className="text-warning">
                             The user redeems this at <strong>/reset-password</strong> with their email and new password.
                           </p>
                         </>

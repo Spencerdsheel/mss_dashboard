@@ -56,7 +56,7 @@ type Props = {
 };
 
 function statusBadge(value: string | null) {
-  if (!value) return <span className="text-slate">—</span>;
+  if (!value) return <span className="text-muted-foreground">—</span>;
   // P1.4: Success semantics now come from campaign config in DB.
   // Simple heuristic: "Not targeted" / "Store closed" / "Refused" are neutral/negative.
   const isNegative = value.toLowerCase().includes("refused") || value.toLowerCase().includes("closed");
@@ -66,10 +66,10 @@ function statusBadge(value: string | null) {
       className={cn(
         "inline-flex max-w-[200px] items-center truncate rounded-full px-2.5 py-0.5 text-xs font-medium",
         isNegative
-          ? "bg-red-50 text-red-600"
+          ? "bg-danger/10 text-danger"
           : isNeutral
-          ? "bg-chalk text-slate"
-          : "bg-[#ff682c]/10 text-[#ff682c]"
+          ? "bg-muted text-muted-foreground"
+          : "bg-primary/10 text-primary"
       )}
     >
       {value}
@@ -127,7 +127,7 @@ export function VisitsTable({
         accessorKey: "visitDate",
         header: ({ column }) => <SortButton column={column} label="Date" />,
         cell: ({ row }) => (
-          <span className="tabular-nums text-graphite">{formatDate(row.original.visitDate)}</span>
+          <span className="tabular-nums text-muted-foreground">{formatDate(row.original.visitDate)}</span>
         ),
         sortingFn: "datetime",
       },
@@ -136,8 +136,8 @@ export function VisitsTable({
         header: ({ column }) => <SortButton column={column} label="Store" />,
         cell: ({ row }) => (
           <div>
-            <div className="font-medium text-carbon">{row.original.storeName}</div>
-            <div className="text-xs text-slate">
+            <div className="font-medium text-foreground">{row.original.storeName}</div>
+            <div className="text-xs text-muted-foreground">
               {row.original.storeId}
               {row.original.address ? ` · ${row.original.address}` : ""}
             </div>
@@ -148,7 +148,7 @@ export function VisitsTable({
         accessorKey: "city",
         header: ({ column }) => <SortButton column={column} label="City" />,
         cell: ({ row }) => (
-          <span className="text-graphite">{row.original.city || "—"}</span>
+          <span className="text-muted-foreground">{row.original.city || "—"}</span>
         ),
         filterFn: "equals",
       },
@@ -174,8 +174,8 @@ export function VisitsTable({
         accessorKey: "photoCount",
         header: ({ column }) => <SortButton column={column} label="Photos" />,
         cell: ({ row }) => (
-          <div className="flex items-center gap-1.5 text-sm text-graphite">
-            <ImageIcon className="h-3.5 w-3.5 text-slate" />
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="tabular-nums">{row.original.photoCount}</span>
           </div>
         ),
@@ -227,15 +227,15 @@ export function VisitsTable({
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[260px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
             placeholder="Search by store, city, survey ID…"
-            className="rounded-lg border-chalk pl-9 text-sm placeholder:text-slate focus:ring-signal-orange"
+            className="rounded-lg border-border pl-9 text-sm placeholder:text-muted-foreground focus:ring-primary"
           />
           {globalSearch !== deferredSearch && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate">
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
               Filtering…
             </span>
           )}
@@ -249,7 +249,7 @@ export function VisitsTable({
         <Button
           variant="ghost"
           size="sm"
-          className="rounded-pill text-slate hover:text-carbon"
+          className="rounded-pill text-muted-foreground hover:text-foreground"
           onClick={() => {
             setGlobalSearch("");
             setCity("__all__");
@@ -265,15 +265,15 @@ export function VisitsTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-chalk bg-paper">
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
         <table className="w-full text-sm">
-          <thead className="border-b border-chalk bg-fog">
+          <thead className="border-b border-border bg-muted">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-xs font-medium text-slate"
+                    className="px-4 py-3 text-left text-xs font-medium text-muted-foreground"
                   >
                     {header.isPlaceholder
                       ? null
@@ -286,7 +286,7 @@ export function VisitsTable({
           <tbody>
             {table.getRowModel().rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-16 text-center text-sm text-slate">
+                <td colSpan={columns.length} className="px-4 py-16 text-center text-sm text-muted-foreground">
                   No visits match the current filters.
                 </td>
               </tr>
@@ -299,7 +299,7 @@ export function VisitsTable({
                       `/dashboard/projects/${projectId}/visits/${row.original.surveyId}`
                     )
                   }
-                  className="cursor-pointer border-t border-chalk transition-colors hover:bg-fog"
+                  className="cursor-pointer border-t border-border transition-colors hover:bg-muted"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3 align-middle">
@@ -314,7 +314,7 @@ export function VisitsTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-xs text-slate">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <div>
           {table.getFilteredRowModel().rows.length} of {rows.length} visits
         </div>
@@ -327,7 +327,7 @@ export function VisitsTable({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="tabular-nums text-graphite">
+          <span className="tabular-nums text-muted-foreground">
             {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}
           </span>
           <Button
@@ -347,7 +347,7 @@ export function VisitsTable({
 function SortButton({ column, label }: { column: any; label: string }) {
   return (
     <button
-      className="inline-flex items-center gap-1 text-xs font-medium text-slate hover:text-carbon"
+      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
       onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
     >
       {label}
@@ -369,7 +369,7 @@ function FilterSelect({
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-[160px] rounded-full border-chalk text-xs text-graphite">
+      <SelectTrigger className="w-[160px] rounded-full border-border text-xs text-muted-foreground">
         <SelectValue placeholder={label}>
           {value === "__all__" ? label : value.length > 20 ? value.slice(0, 20) + "…" : value}
         </SelectValue>

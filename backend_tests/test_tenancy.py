@@ -23,6 +23,14 @@ CLIENT_CLAIMS_FOREIGN = AuthClaims(
     tenant_id="tenant_other",
     project_ids=("proj_other",),
 )
+# CLIENT_ADMIN is scoped by tenant_ids (Sprint 07b); tenant_id is None for this role.
+CLIENT_ADMIN_CLAIMS = AuthClaims(
+    user_id="u-cadmin",
+    role=Role.CLIENT_ADMIN,
+    tenant_id=None,
+    company_id="company_default",
+    tenant_ids=("tenant_labatt",),
+)
 
 OWNED_PROJECT = Project(
     id="proj_messi",
@@ -78,6 +86,14 @@ class TestCanAccessProject:
     def test_client_without_tenant_id_cannot_access(self):
         claims = AuthClaims(user_id="u-bad", role=Role.TENANT_USER, tenant_id=None, project_ids=("proj_messi",))
         assert can_access_project(claims, OWNED_PROJECT) is False
+
+    def test_client_admin_can_access_project_in_assigned_tenant(self):
+        # Regression: a CLIENT_ADMIN whose tenant_ids include the project's tenant must be
+        # allowed (previously 404'd because the check needed a company_id no caller passed).
+        assert can_access_project(CLIENT_ADMIN_CLAIMS, OWNED_PROJECT) is True
+
+    def test_client_admin_cannot_access_project_in_unassigned_tenant(self):
+        assert can_access_project(CLIENT_ADMIN_CLAIMS, FOREIGN_PROJECT) is False
 
 
 class TestAssertProjectAccess:

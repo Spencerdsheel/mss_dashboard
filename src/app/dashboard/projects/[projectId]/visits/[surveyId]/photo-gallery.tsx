@@ -2,92 +2,132 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { X, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 
-type Photo = { label: string; kind: string; url: string };
+type PhotoSlot = { label: string; kind: string; url: string | null };
 
-export function PhotoGallery({
-  storefront,
-  gallery,
-}: {
-  storefront?: Photo;
-  gallery: Photo[];
-}) {
-  const [active, setActive] = useState<Photo | null>(null);
+const ALL_SLOTS: { label: string; kind: string }[] = [
+  { label: "Storefront", kind: "STOREFRONT" },
+  { label: "P1", kind: "PHOTO_1" },
+  { label: "P2", kind: "PHOTO_2" },
+  { label: "P3", kind: "PHOTO_3" },
+  { label: "P4", kind: "PHOTO_4" },
+  { label: "P5", kind: "PHOTO_5" },
+  { label: "P6", kind: "PHOTO_6" },
+  { label: "P7", kind: "PHOTO_7" },
+  { label: "P8", kind: "PHOTO_8" },
+  { label: "P9", kind: "PHOTO_9" },
+];
+
+export function PhotoGallery({ photos }: { photos: PhotoSlot[] }) {
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  const filledPhotos = photos.filter((p): p is PhotoSlot & { url: string } => !!p.url);
 
   return (
-    <div className="space-y-4">
-      {storefront && (
-        <button
-          type="button"
-          onClick={() => setActive(storefront)}
-          className="group block w-full overflow-hidden rounded-lg border bg-muted"
+    <>
+      <div className="grid grid-cols-5 grid-rows-2 gap-2 h-full">
+        {ALL_SLOTS.map((slot) => {
+          const photo = photos.find((p) => p.kind === slot.kind);
+          const hasUrl = !!photo?.url;
+          return (
+            <button
+              key={slot.kind}
+              type="button"
+              className={`relative rounded-lg overflow-hidden border transition-all flex flex-col items-center justify-center ${
+                hasUrl
+                  ? "border-border hover:border-[#ff682c]/50 hover:shadow-md cursor-pointer"
+                  : "border-dashed border-border/50 cursor-default"
+              }`}
+              onClick={() => {
+                if (hasUrl) {
+                  const idx = filledPhotos.findIndex((p) => p.kind === slot.kind);
+                  if (idx >= 0) setLightboxIdx(idx);
+                }
+              }}
+              disabled={!hasUrl}
+            >
+              {hasUrl ? (
+                <>
+                  <Image
+                    src={photo!.url!}
+                    alt={slot.label}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 20vw, 15vw"
+                    unoptimized
+                  />
+                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 py-1">
+                    <span className="text-[10px] font-medium text-white">{slot.label}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Camera className="h-4 w-4 text-muted-foreground/40" />
+                  <span className="text-[9px] text-muted-foreground/40 mt-0.5">{slot.label}</span>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {lightboxIdx !== null && filledPhotos[lightboxIdx] && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setLightboxIdx(null)}
         >
-          <div className="relative h-72 w-full">
+          <button
+            type="button"
+            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+            onClick={() => setLightboxIdx(null)}
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {filledPhotos.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="absolute left-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxIdx((lightboxIdx - 1 + filledPhotos.length) % filledPhotos.length);
+                }}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className="absolute right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxIdx((lightboxIdx + 1) % filledPhotos.length);
+                }}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </>
+          )}
+
+          <div
+            className="relative max-h-[80vh] max-w-[80vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Image
-              src={storefront.url}
-              alt={storefront.label}
-              fill
-              className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-              sizes="(max-width: 768px) 100vw, 50vw"
+              src={filledPhotos[lightboxIdx].url}
+              alt={filledPhotos[lightboxIdx].label}
+              width={800}
+              height={600}
+              className="rounded-lg object-contain max-h-[80vh]"
               unoptimized
             />
-            <div className="absolute left-3 top-3 rounded-full bg-background/90 px-3 py-1 text-xs font-medium shadow">
-              Vitrine
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white">
+              {filledPhotos[lightboxIdx].label} · {lightboxIdx + 1}/{filledPhotos.length}
             </div>
           </div>
-        </button>
-      )}
-
-      {gallery.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {gallery.map((p) => (
-            <button
-              key={p.kind}
-              type="button"
-              onClick={() => setActive(p)}
-              className="group relative h-32 overflow-hidden rounded-lg border bg-muted"
-            >
-              <Image
-                src={p.url}
-                alt={p.label}
-                fill
-                className="object-cover transition-transform duration-300 group-hover:scale-[1.05]"
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                unoptimized
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] font-medium text-white">
-                {p.label}
-              </div>
-            </button>
-          ))}
         </div>
       )}
-
-      <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{active?.label}</DialogTitle>
-          </DialogHeader>
-          {active && (
-            <div className="relative max-h-[75vh] w-full">
-              <Image
-                src={active.url}
-                alt={active.label}
-                width={1200}
-                height={800}
-                className="w-full rounded-md object-contain"
-                unoptimized
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    </>
   );
 }

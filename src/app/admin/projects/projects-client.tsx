@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import type { AdminTenant, AdminProject } from "@/server/admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,9 +86,6 @@ export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProp
             Edit project name and active window (start / end date) per tenant.
           </p>
         </div>
-        <Link href="/admin">
-          <Button variant="outline">Back to Admin</Button>
-        </Link>
       </div>
 
       {tenants.length === 0 && (
@@ -219,7 +215,7 @@ export function ProjectsClient({ tenants, projectsByTenant }: ProjectsClientProp
                           {projMessage && (
                             <p
                               className={`text-xs ${
-                                projMessage.type === "success" ? "text-green-700" : "text-red-700"
+                                projMessage.type === "success" ? "text-success" : "text-danger"
                               }`}
                             >
                               {projMessage.text}

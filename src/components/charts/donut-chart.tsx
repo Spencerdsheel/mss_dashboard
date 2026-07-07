@@ -29,16 +29,16 @@ export const DonutChart = memo(function DonutChart({
 }) {
   const safe = data.filter((d) => d.value > 0);
   return (
-    <div className="relative h-[220px] w-full">
+    <div className="relative h-full w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Tooltip
             contentStyle={{
               borderRadius: 8,
-              border: "1px solid #e8e8e8",
-              background: "#ffffff",
+              border: "1px solid hsl(var(--border))",
+              background: "hsl(var(--card))",
               fontSize: 12,
-              color: "#202020",
+              color: "hsl(var(--foreground))",
               boxShadow: "0 1px 3px rgba(32,32,32,0.08)",
             }}
             formatter={(value: number, name) => [
@@ -50,10 +50,10 @@ export const DonutChart = memo(function DonutChart({
             data={safe}
             dataKey="value"
             nameKey="label"
-            innerRadius={60}
-            outerRadius={88}
+            innerRadius="60%"
+            outerRadius="88%"
             paddingAngle={2}
-            stroke="#efefef"
+            stroke="hsl(var(--card))"
             strokeWidth={2}
           >
             {safe.map((_, i) => (
@@ -63,11 +63,11 @@ export const DonutChart = memo(function DonutChart({
         </PieChart>
       </ResponsiveContainer>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-[10px] uppercase tracking-widest text-slate">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
           {centerLabel}
         </div>
         <div
-          className="font-space-grotesk text-3xl text-carbon"
+          className="font-space-grotesk text-3xl text-foreground"
           style={{ letterSpacing: "-0.04em", lineHeight: 1 }}
         >
           {centerValue}
@@ -93,9 +93,9 @@ export const DonutLegend = memo(function DonutLegend({
               className="h-2 w-2 shrink-0 rounded-full"
               style={{ background: COLORS[i % COLORS.length] }}
             />
-            <span className="truncate text-graphite">{d.label}</span>
+            <span className="truncate text-muted-foreground">{d.label}</span>
           </span>
-          <span className="shrink-0 tabular-nums text-slate">
+          <span className="shrink-0 tabular-nums text-muted-foreground">
             {d.value} · {total ? ((d.value / total) * 100).toFixed(0) : 0}%
           </span>
         </li>

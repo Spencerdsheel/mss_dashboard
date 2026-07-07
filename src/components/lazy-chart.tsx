@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 function ChartSkeleton() {
   return (
-    <div className="h-[280px] w-full rounded-lg bg-muted/20 animate-pulse" />
+    <div className="h-full w-full min-h-[120px] rounded-lg bg-muted/20 animate-pulse" />
   );
 }
 
@@ -27,7 +27,7 @@ export function LazyChart({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div ref={ref}>
+    <div ref={ref} className="h-full w-full min-h-0">
       {visible ? children : <ChartSkeleton />}
     </div>
   );

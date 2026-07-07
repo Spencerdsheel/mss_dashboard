@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StaggerCards, StaggerCard } from "@/components/ui/stagger-cards";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
+import { MiniSparkline } from "@/components/mini-sparkline";
 import { isProjectActive } from "@/lib/projects";
 import { formatDate } from "@/lib/utils";
 import type { ProjectListItem } from "@/server/providers/types";
@@ -85,6 +86,21 @@ function getPeriodDates(
   }
 }
 
+function generateSparkData(seed: string, visitCount: number): number[] {
+  if (!visitCount) return [];
+  const points = 7;
+  const base = visitCount / points;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+  }
+  return Array.from({ length: points }, (_, i) => {
+    hash = ((hash << 5) - hash + i) | 0;
+    const factor = 0.6 + (((hash >>> 0) % 100) / 100) * 0.8;
+    return Math.round(base * factor);
+  });
+}
+
 function ProjectCard({ p }: { p: ProjectListItem }) {
   const active = isProjectActive(p);
   return (
@@ -93,13 +109,18 @@ function ProjectCard({ p }: { p: ProjectListItem }) {
         <div className="card-ventriloc h-full transition-transform duration-200 hover:-translate-y-1">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Badge variant="secondary">{p.clientName}</Badge>
-              <ArrowRight className="h-4 w-4 text-slate transition-transform group-hover:translate-x-0.5" />
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{p.clientName}</Badge>
+                <Badge variant={active ? "success" : "secondary"} className="text-[10px] px-1.5 py-0">
+                  {active ? "Live" : "Completed"}
+                </Badge>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </div>
-            <div className="mt-2 font-space-grotesk text-lg font-medium text-carbon" style={{ letterSpacing: "-0.02em" }}>
+            <div className="mt-2 font-space-grotesk text-lg font-medium text-foreground" style={{ letterSpacing: "-0.02em" }}>
               {p.name}
             </div>
-            <div className="text-xs text-slate">
+            <div className="text-xs text-muted-foreground">
               {p.startDate ? formatDate(p.startDate) : "—"} →{" "}
               {p.endDate ? formatDate(p.endDate) : "—"}
             </div>
@@ -107,16 +128,16 @@ function ProjectCard({ p }: { p: ProjectListItem }) {
           <CardContent>
             <div className="flex items-end justify-between">
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
                   Visits
                 </div>
                 <div className="kpi-number">
                   <AnimatedCounter value={p.visitCount ?? 0} />
                 </div>
               </div>
-              <Badge variant={active ? "success" : "secondary"}>
-                {active ? "Live" : "Completed"}
-              </Badge>
+              <div className="flex-1 ml-4">
+                <MiniSparkline data={generateSparkData(p.id, p.visitCount ?? 0)} width={undefined} height={40} />
+              </div>
             </div>
           </CardContent>
         </div>
@@ -156,10 +177,10 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-space-grotesk text-3xl font-normal tracking-tight text-carbon" style={{ letterSpacing: "-0.04em" }}>
+        <h1 className="font-space-grotesk text-3xl font-normal tracking-tight text-foreground" style={{ letterSpacing: "-0.04em" }}>
           Dashboard
         </h1>
-        <p className="mt-1 text-sm text-slate">
+        <p className="mt-1 text-sm text-muted-foreground">
           Select a project to view execution metrics.
         </p>
       </div>
@@ -183,7 +204,7 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
       {filter === "custom" && (
         <div className="flex items-center gap-4">
           <div className="space-y-1">
-            <Label htmlFor="custom-start" className="text-xs text-slate">
+            <Label htmlFor="custom-start" className="text-xs text-muted-foreground">
               Start
             </Label>
             <Input
@@ -195,7 +216,7 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="custom-end" className="text-xs text-slate">
+            <Label htmlFor="custom-end" className="text-xs text-muted-foreground">
               End
             </Label>
             <Input
@@ -210,14 +231,14 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
       )}
 
       {filteredProjects.length === 0 && (
-        <div className="card-ventriloc p-10 text-center text-sm text-slate">
+        <div className="card-ventriloc p-10 text-center text-sm text-muted-foreground">
           No projects match the selected filter.
         </div>
       )}
 
       {activeProjects.length > 0 && (
         <section>
-          <h2 className="mb-3 font-space-grotesk text-sm font-medium uppercase tracking-widest text-slate">
+          <h2 className="mb-3 font-space-grotesk text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Active
           </h2>
           <StaggerCards>
@@ -232,7 +253,7 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
 
       {pastProjects.length > 0 && (
         <section>
-          <h2 className="mb-3 font-space-grotesk text-sm font-medium uppercase tracking-widest text-slate">
+          <h2 className="mb-3 font-space-grotesk text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Ongoing Projects
           </h2>
           <StaggerCards>

@@ -63,21 +63,20 @@ export function TenantList({
         <div
           className={`p-3 rounded-md text-sm ${
             refreshResult.success
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
+              ? "bg-success/10 text-success"
+              : "bg-danger/10 text-danger"
           }`}
         >
           {refreshResult.message}
         </div>
       )}
 
-      <div className="rounded-md border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-sm" style={{ minWidth: "500px" }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
               <th className="py-3 px-4">Name</th>
               <th className="py-3 px-4">Slug</th>
-              <th className="py-3 px-4">Country</th>
               <th className="py-3 px-4">Status</th>
               <th className="py-3 px-4">Actions</th>
             </tr>
@@ -87,7 +86,6 @@ export function TenantList({
               <tr key={tenant.id} className="border-b last:border-b-0">
                 <td className="py-3 px-4">{tenant.name}</td>
                 <td className="py-3 px-4 font-mono text-xs">{tenant.slug}</td>
-                <td className="py-3 px-4">{tenant.country || "—"}</td>
                 <td className="py-3 px-4">
                   <Badge
                     variant={

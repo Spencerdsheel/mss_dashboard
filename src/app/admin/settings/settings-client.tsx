@@ -34,10 +34,10 @@ export function SettingsClient({ siteTitle }: SettingsClientProps) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-space-grotesk text-3xl font-normal tracking-tight text-carbon" style={{ letterSpacing: "-0.04em" }}>
+        <h1 className="font-space-grotesk text-3xl font-normal tracking-tight text-foreground" style={{ letterSpacing: "-0.04em" }}>
           Platform Settings
         </h1>
-        <p className="mt-1 text-sm text-slate">
+        <p className="mt-1 text-sm text-muted-foreground">
           Configure global platform settings.
         </p>
       </div>
@@ -51,7 +51,7 @@ export function SettingsClient({ siteTitle }: SettingsClientProps) {
             defaultValue={siteTitle}
             placeholder="iSN"
           />
-          <p className="text-xs text-slate">
+          <p className="text-xs text-muted-foreground">
             This title appears in the header navigation across the dashboard.
           </p>
         </div>
@@ -62,7 +62,7 @@ export function SettingsClient({ siteTitle }: SettingsClientProps) {
           </div>
         )}
         {success && (
-          <div className="rounded-md border border-green-400/40 bg-green-50 px-3 py-2 text-sm text-green-700">
+          <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
             Site title updated successfully.
           </div>
         )}

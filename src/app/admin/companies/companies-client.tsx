@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import Link from "next/link";
 import { createCompanyAction, updateCompanyAction } from "./actions";
 
 interface CompaniesClientProps {
@@ -88,21 +87,18 @@ export function CompaniesClient({ companies, tenants }: CompaniesClientProps) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin">
-            <Button variant="outline">Back to Admin</Button>
-          </Link>
           <Button onClick={handleOpenCreate}>Create Company</Button>
         </div>
       </div>
 
       {error && (
-        <div className="p-3 rounded-md text-sm bg-red-100 text-red-800">
+        <div className="p-3 rounded-md text-sm bg-danger/10 text-danger">
           {error}
         </div>
       )}
 
-      <div className="rounded-md border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-sm" style={{ minWidth: "700px" }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
               <th className="py-3 px-4">Name</th>

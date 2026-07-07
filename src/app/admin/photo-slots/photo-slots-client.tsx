@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { AdminTenant, PhotoSlotLabel } from "@/server/admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Link from "next/link";
 import { updatePhotoSlotsAction, getProjectsForTenant, getPhotoSlotsForProject } from "./actions";
 
 interface PhotoSlotsClientProps {
@@ -31,7 +29,6 @@ export function PhotoSlotsClient({
   defaultTenantId,
   defaultProjectId,
 }: PhotoSlotsClientProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selectedTenant, setSelectedTenant] = useState<string>(defaultTenantId || tenants[0]?.id || "");
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>(
@@ -116,9 +113,6 @@ export function PhotoSlotsClient({
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin">
-            <Button variant="outline">Back to Admin</Button>
-          </Link>
           <Button
             onClick={handleSave}
             disabled={isPending || !selectedProject}
@@ -132,8 +126,8 @@ export function PhotoSlotsClient({
         <div
           className={`p-3 rounded-md text-sm ${
             message.type === "success"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
+              ? "bg-success/10 text-success"
+              : "bg-danger/10 text-danger"
           }`}
         >
           {message.text}
@@ -187,8 +181,8 @@ export function PhotoSlotsClient({
           No photo slots configured for this project
         </div>
       ) : (
-        <div className="rounded-md border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-sm" style={{ minWidth: "500px" }}>
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
                 <th className="py-3 px-4">Slot Kind</th>

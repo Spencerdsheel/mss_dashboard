@@ -1,13 +1,13 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
-import { LogOut, Settings } from "lucide-react";
-import { logoutAction } from "@/app/dashboard/actions";
+import { ReactNode, useEffect, useState } from "react";
+import { Menu } from "lucide-react";
+import { Sidebar } from "@/components/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: string; label: string; adminOnly?: boolean };
+const COLLAPSED_KEY = "sidebar-collapsed";
 
 export function AppShell({
   children,
@@ -18,89 +18,78 @@ export function AppShell({
   session: { user: { email?: string | null; name?: string | null; role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER" } };
   siteTitle?: string;
 }) {
-  const pathname = usePathname();
-  const projectMatch = pathname.match(/^\/dashboard\/projects\/([^/]+)/);
-  const projectId = projectMatch?.[1];
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const items: NavItem[] = [
-    { href: "/dashboard", label: "Home" },
-  ];
+  useEffect(() => {
+    const stored = localStorage.getItem(COLLAPSED_KEY);
+    setSidebarCollapsed(stored === "true");
 
-  if (projectId) {
-    items.push(
-      { href: `/dashboard/projects/${projectId}`, label: "Project Overview" },
-      { href: `/dashboard/projects/${projectId}/visits`, label: "Visit List" },
-      { href: `/dashboard/projects/${projectId}/visits?view=photos`, label: "Visit Photos" },
-    );
-  }
-
-  items.push({ href: "/admin", label: "Admin", adminOnly: true });
-
-  const filtered = items.filter(
-    (i) => !i.adminOnly || session.user.role === "PLATFORM_ADMIN" || session.user.role === "CLIENT_ADMIN"
-  );
+    const handler = () => {
+      setSidebarCollapsed(localStorage.getItem(COLLAPSED_KEY) === "true");
+    };
+    window.addEventListener("storage", handler);
+    window.addEventListener("sidebar-toggle", handler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("sidebar-toggle", handler);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* ── Top Nav ───────────────────────────────────────────── */}
-      <header className="glass-header sticky top-0 z-20 h-14">
-        <div className="mx-auto flex h-full max-w-[1200px] items-center justify-between px-8">
+      {/* Sidebar */}
+      <Sidebar
+        user={{
+          email: session.user.email ?? "",
+          name: session.user.name ?? "",
+          role: session.user.role,
+        }}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
 
-          {/* Logo */}
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-1.5 font-space-grotesk text-sm font-medium tracking-tight text-carbon"
-          >
-            {siteTitle}
-            <span className="text-signal-orange text-xs leading-none">●</span>
-          </Link>
-
-          {/* Nav links */}
-          <nav className="flex items-center gap-0.5">
-            {filtered.map((item) => {
-              const isActive =
-                item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname.startsWith(item.href.split("?")[0]);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "rounded-pill px-4 py-1.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-chalk text-carbon"
-                      : "text-graphite hover:bg-chalk/60 hover:text-carbon"
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* User + sign out */}
+      {/* Main content area — offset by sidebar width */}
+      <div
+        className={cn(
+          "transition-[padding] duration-200",
+          sidebarCollapsed ? "md:pl-16" : "md:pl-60"
+        )}
+      >
+        {/* Slim header — 48px, sticky */}
+        <header className="sticky top-0 z-20 flex h-12 items-center justify-between border-b border-border bg-card/80 backdrop-blur-sm px-4 md:px-6">
+          {/* Left: mobile hamburger + logo/site title */}
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent md:hidden"
+              aria-label="Open sidebar"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-1.5 font-space-grotesk text-sm font-medium tracking-tight text-foreground"
+            >
+              {siteTitle}
+              <span className="text-primary text-xs leading-none">●</span>
+            </Link>
+          </div>
+
+          {/* Right: theme toggle + user name */}
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <span className="text-xs text-muted-foreground hidden sm:inline">
               {session.user.name || session.user.email}
             </span>
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                className="flex items-center gap-1.5 rounded-pill border border-chalk px-3 py-1.5 text-xs font-medium text-graphite transition-colors hover:border-carbon/30 hover:text-carbon"
-              >
-                <LogOut className="h-3 w-3" />
-                Sign out
-              </button>
-            </form>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* ── Page content ──────────────────────────────────────── */}
-      <main className="mx-auto w-full max-w-[1200px] px-8 py-8">
-        {children}
-      </main>
+        {/* Page content — fixed viewport height; scrolls when content overflows it.
+            Per-project dashboard pages size their own content to match this height
+            exactly (see [projectId]/layout.tsx), so no scrollbar appears there. */}
+        <main className="h-[calc(100dvh-48px)] overflow-y-auto p-4 md:p-6">{children}</main>
+      </div>
     </div>
   );
 }

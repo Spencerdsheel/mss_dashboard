@@ -3,19 +3,21 @@ import { notFound } from "next/navigation";
 import { assertProjectAccess } from "@/server/rbac";
 import { getDashboardProvider } from "@/server/providers";
 import { cookies } from "next/headers";
-import {
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { PhotoGallery } from "./photo-gallery";
 import { formatDate } from "@/lib/utils";
-import { ArrowLeft, MapPin, Store, User, Clock } from "lucide-react";
-
-// P1.4: Success values now come from campaign config in DB, not hardcoded constants.
+import {
+  ArrowLeft,
+  ArrowRight,
+  MapPin,
+  Store,
+  User,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Camera,
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -30,126 +32,179 @@ export default async function VisitDetailPage({
   const token = cookieStore.get("auth_token")?.value || "";
 
   const provider = getDashboardProvider("rest-api", token, projectId);
-  const visit = await provider.getVisit(surveyId);
+  const [visit, allVisits] = await Promise.all([
+    provider.getVisit(surveyId),
+    provider.listVisits(),
+  ]);
 
   if (!visit) notFound();
 
-  const photos = [
-    { label: "Storefront", kind: "STOREFRONT", url: visit.storefrontUrl },
-    { label: "Photo 1", kind: "PHOTO_1", url: visit.photo1 },
-    { label: "Photo 2", kind: "PHOTO_2", url: visit.photo2 },
-    { label: "Photo 3", kind: "PHOTO_3", url: visit.photo3 },
-    { label: "Photo 4", kind: "PHOTO_4", url: visit.photo4 },
-    { label: "Photo 5", kind: "PHOTO_5", url: visit.photo5 },
-    { label: "Photo 6", kind: "PHOTO_6", url: visit.photo6 },
-    { label: "Photo 7", kind: "PHOTO_7", url: visit.photo7 },
-    { label: "Photo 8", kind: "PHOTO_8", url: visit.photo8 },
-    { label: "Photo 9", kind: "PHOTO_9", url: visit.photo9 },
-  ].filter((p) => !!p.url) as { label: string; kind: string; url: string }[];
+  const currentIdx = allVisits.findIndex((v) => v.surveyId === surveyId);
+  const prevVisit = currentIdx > 0 ? allVisits[currentIdx - 1] : null;
+  const nextVisit = currentIdx < allVisits.length - 1 ? allVisits[currentIdx + 1] : null;
 
-  const storefront = photos.find((p) => p.kind === "STOREFRONT");
-  const gallery = photos.filter((p) => p.kind !== "STOREFRONT");
+  const photoSlots = [
+    { label: "Storefront", kind: "STOREFRONT", url: visit.storefrontUrl },
+    { label: "P1", kind: "PHOTO_1", url: visit.photo1 },
+    { label: "P2", kind: "PHOTO_2", url: visit.photo2 },
+    { label: "P3", kind: "PHOTO_3", url: visit.photo3 },
+    { label: "P4", kind: "PHOTO_4", url: visit.photo4 },
+    { label: "P5", kind: "PHOTO_5", url: visit.photo5 },
+    { label: "P6", kind: "PHOTO_6", url: visit.photo6 },
+    { label: "P7", kind: "PHOTO_7", url: visit.photo7 },
+    { label: "P8", kind: "PHOTO_8", url: visit.photo8 },
+    { label: "P9", kind: "PHOTO_9", url: visit.photo9 },
+  ];
+
+  const filledCount = photoSlots.filter((p) => !!p.url).length;
+  const installs = [
+    { label: "Install 1", value: visit.install1 },
+    { label: "Install 2", value: visit.install2 },
+    { label: "Install 3", value: visit.install3 },
+    ...(visit.install4 ? [{ label: "Install 4", value: visit.install4 }] : []),
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Link href={`/dashboard/projects/${projectId}/visits`}>
-          <Button variant="ghost" size="sm" className="text-graphite">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Visit List
-          </Button>
+    <div className="flex h-full flex-col overflow-hidden gap-3">
+      {/* Top bar: back + survey ID + prev/next nav */}
+      <div className="flex items-center justify-between shrink-0">
+        <Link
+          href={`/dashboard/projects/${projectId}/visits`}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Visit List
         </Link>
-        <Badge variant="outline">Survey ID {visit.surveyId}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[10px]">
+            Survey {visit.surveyId}
+          </Badge>
+          <div className="flex items-center gap-1">
+            {prevVisit ? (
+              <Link
+                href={`/dashboard/projects/${projectId}/visits/${prevVisit.surveyId}`}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Previous visit"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+              </Link>
+            ) : (
+              <span className="rounded-md p-1 text-muted-foreground/30">
+                <ArrowLeft className="h-3.5 w-3.5" />
+              </span>
+            )}
+            {nextVisit ? (
+              <Link
+                href={`/dashboard/projects/${projectId}/visits/${nextVisit.surveyId}`}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Next visit"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : (
+              <span className="rounded-md p-1 text-muted-foreground/30">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_1fr]">
-        {/* Left column — store info + install status */}
-        <div className="space-y-4">
-          <div className="card-ventriloc">
-            <CardHeader>
-              <CardDescription className="text-xs text-slate">Store</CardDescription>
-              <CardTitle
-                className="font-space-grotesk text-xl text-carbon"
-                style={{ letterSpacing: "-0.02em" }}
-              >
+      {/* Main content: Store panel (col 1-4) + Photo grid (col 5-12) */}
+      <div className="grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+        {/* Store panel */}
+        <div className="col-span-4 flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <div className="card-ventriloc shrink-0">
+            <CardHeader className="px-3 py-2.5 space-y-0">
+              <CardTitle className="font-space-grotesk text-lg text-foreground" style={{ letterSpacing: "-0.02em" }}>
                 {visit.storeName}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <InfoRow icon={<Store className="h-4 w-4" />} label="Store ID" value={visit.storeId} />
+            <CardContent className="space-y-2.5 px-3 pb-3 text-sm">
+              <InfoRow icon={<Store className="h-3.5 w-3.5" />} label="Store ID" value={visit.storeId} />
               {visit.address && (
                 <InfoRow
-                  icon={<MapPin className="h-4 w-4" />}
+                  icon={<MapPin className="h-3.5 w-3.5" />}
                   label="Address"
                   value={`${visit.address}${visit.city ? `, ${visit.city}` : ""}`}
                 />
               )}
               <InfoRow
-                icon={<Clock className="h-4 w-4" />}
+                icon={<Clock className="h-3.5 w-3.5" />}
                 label="Visit Date"
                 value={`${formatDate(visit.visitDate)}${visit.visitTime ? ` · ${visit.visitTime}` : ""}`}
               />
               {visit.clerkName && (
-                <InfoRow icon={<User className="h-4 w-4" />} label="Clerk" value={visit.clerkName} />
+                <InfoRow icon={<User className="h-3.5 w-3.5" />} label="Clerk" value={visit.clerkName} />
               )}
             </CardContent>
           </div>
 
-          <div className="card-ventriloc">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-carbon">
-                Installation Status
-              </CardTitle>
+          <div className="card-ventriloc shrink-0">
+            <CardHeader className="px-3 py-2.5 space-y-0">
+              <CardTitle className="text-xs font-medium text-foreground">Install Status</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <StatusRow label="Install 1" value={visit.install1} />
-              <StatusRow label="Install 2" value={visit.install2} />
-              <StatusRow label="Install 3" value={visit.install3} />
-              {visit.install4 && (
-                <StatusRow label="Install 4" value={visit.install4} />
-              )}
+            <CardContent className="space-y-2 px-3 pb-3">
+              {installs.map((inst) => (
+                <StatusRow key={inst.label} label={inst.label} value={inst.value} />
+              ))}
             </CardContent>
           </div>
 
           {visit.overallNotes && (
-            <div className="card-ventriloc">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-carbon">General Notes</CardTitle>
+            <div className="card-ventriloc shrink-0">
+              <CardHeader className="px-3 py-2.5 space-y-0">
+                <CardTitle className="text-xs font-medium text-foreground">Notes</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-graphite">
+              <CardContent className="px-3 pb-3">
+                <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                   {visit.overallNotes}
                 </p>
               </CardContent>
             </div>
           )}
-        </div>
 
-        {/* Right column — photos */}
-        <div className="space-y-4">
-          <div className="card-ventriloc">
-            <CardHeader>
+          {/* Completeness rail */}
+          <div className="card-ventriloc shrink-0">
+            <CardHeader className="px-3 py-2.5 space-y-0">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-sm font-medium text-carbon">Visit Photos</CardTitle>
-                  <CardDescription className="mt-0.5 text-xs text-slate">
-                    {photos.length} photo{photos.length !== 1 ? "s" : ""} submitted · storefront + up to 9 slots
-                  </CardDescription>
-                </div>
-                <Badge variant={photos.length === 0 ? "destructive" : "secondary"}>
-                  {photos.length === 0 ? "No photos" : `${photos.length} / 10`}
-                </Badge>
+                <CardTitle className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <Camera className="h-3.5 w-3.5 text-[#ff682c]" />
+                  Completeness
+                </CardTitle>
+                <span className="text-[10px] tabular-nums text-muted-foreground">{filledCount}/10</span>
               </div>
             </CardHeader>
-            <CardContent>
-              {photos.length === 0 ? (
-                <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-chalk text-sm text-slate">
-                  No photos submitted for this visit.
-                </div>
-              ) : (
-                <PhotoGallery storefront={storefront} gallery={gallery} />
-              )}
+            <CardContent className="px-3 pb-3">
+              <div className="flex items-center gap-1.5">
+                {photoSlots.map((slot) => (
+                  <div
+                    key={slot.kind}
+                    className={`h-2.5 flex-1 rounded-full transition-colors ${
+                      slot.url ? "bg-[#ff682c]" : "bg-muted"
+                    }`}
+                    title={`${slot.label}: ${slot.url ? "Has photo" : "Empty"}`}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[9px] text-muted-foreground">SF</span>
+                <span className="text-[9px] text-muted-foreground">P9</span>
+              </div>
             </CardContent>
+          </div>
+        </div>
+
+        {/* Photo grid 5x2 */}
+        <div className="col-span-8 card-ventriloc flex flex-col min-h-0 p-3">
+          <div className="flex items-center justify-between shrink-0 mb-2">
+            <span className="text-sm font-medium text-foreground">Photo Evidence</span>
+            <Badge variant={filledCount === 0 ? "destructive" : "secondary"} className="text-[10px]">
+              {filledCount === 0 ? "No photos" : `${filledCount} / 10`}
+            </Badge>
+          </div>
+          <div className="flex-1 min-h-0">
+            <PhotoGallery photos={photoSlots} />
           </div>
         </div>
       </div>
@@ -159,39 +214,39 @@ export default async function VisitDetailPage({
 
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="mt-0.5 text-slate">{icon}</div>
+    <div className="flex items-start gap-2">
+      <div className="mt-0.5 text-muted-foreground">{icon}</div>
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-slate">{label}</div>
-        <div className="font-medium text-carbon">{value}</div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-xs font-medium text-foreground">{value}</div>
       </div>
     </div>
   );
 }
 
-function StatusRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
-  // P1.4: Success semantics now come from campaign config in DB.
+function StatusRow({ label, value }: { label: string; value: string | null }) {
   const isNegative = value?.toLowerCase().includes("refused") || value?.toLowerCase().includes("closed");
-  const isNeutral = value?.toLowerCase().includes("not targeted");
-  const variant = !value
-    ? "outline"
-    : isNegative
-    ? "destructive"
-    : isNeutral
-    ? "outline"
-    : "success";
+  const isPositive = value && !isNegative && !value.toLowerCase().includes("not targeted");
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="text-sm text-graphite">{label}</div>
-      <Badge variant={variant as any} className="max-w-[220px] truncate text-right">
-        {value ?? "—"}
-      </Badge>
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-1">
+        {value ? (
+          isPositive ? (
+            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+          ) : isNegative ? (
+            <XCircle className="h-3 w-3 text-destructive" />
+          ) : null
+        ) : null}
+        <Badge
+          variant={
+            !value ? "outline" : isNegative ? "destructive" : isPositive ? ("success" as any) : "outline"
+          }
+          className="max-w-[180px] truncate text-[10px]"
+        >
+          {value ?? "—"}
+        </Badge>
+      </div>
     </div>
   );
 }

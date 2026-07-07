@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Link from "next/link";
 import { updateMetricsAction, getProjectsForTenant, getMetricsForProject } from "./actions";
 
 interface MetricsClientProps {
@@ -120,9 +119,6 @@ export function MetricsClient({
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin">
-            <Button variant="outline">Back to Admin</Button>
-          </Link>
           <Button
             onClick={handleSave}
             disabled={isPending || !selectedProject}
@@ -136,8 +132,8 @@ export function MetricsClient({
         <div
           className={`p-3 rounded-md text-sm ${
             message.type === "success"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
+              ? "bg-success/10 text-success"
+              : "bg-danger/10 text-danger"
           }`}
         >
           {message.text}
@@ -191,8 +187,8 @@ export function MetricsClient({
           No metrics configured for this project
         </div>
       ) : (
-        <div className="rounded-md border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-sm" style={{ minWidth: "700px" }}>
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
                 <th className="py-3 px-4">Key</th>

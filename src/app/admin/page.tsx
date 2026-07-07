@@ -1,19 +1,12 @@
 import { backendGet } from "@/server/backend-api";
 import { cookies } from "next/headers";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { TenantList } from "@/components/admin/tenant-list";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { requireAdminOrAbove } from "@/server/rbac";
-import { ROLE_LABELS } from "@/types/role";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const session = await requireAdminOrAbove();
-  const role = session.user.role;
-  const isPlatformAdmin = role === "PLATFORM_ADMIN";
+  await requireAdminOrAbove();
 
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value || "";
@@ -31,87 +24,44 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
-          <p className="text-sm text-muted-foreground">
-            Backend configuration, tenants, and data sync status.
-          </p>
+      <div>
+        <h1
+          className="font-space-grotesk text-3xl font-normal tracking-tight text-foreground"
+          style={{ letterSpacing: "-0.04em" }}
+        >
+          Admin
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Backend configuration, tenants, and data sync status.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="card-ventriloc p-5">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Active Tenants
+          </div>
+          <div
+            className="mt-2 font-space-grotesk text-3xl font-medium text-foreground"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            {tenants.filter((t) => t.status === "active").length}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">{tenants.length} total</div>
         </div>
-        <div className="flex gap-2">
-          <Link href="/admin/users">
-            <Button variant="outline">Manage Users</Button>
-          </Link>
-          <Link href="/admin/projects">
-            <Button variant="outline">Projects</Button>
-          </Link>
-          <Link href="/admin/photo-slots">
-            <Button variant="outline">Photo Slots</Button>
-          </Link>
-          <Link href="/admin/metrics">
-            <Button variant="outline">Metric Targets</Button>
-          </Link>
-          {isPlatformAdmin && (
-            <Link href="/admin/companies">
-              <Button variant="outline">Companies</Button>
-            </Link>
-          )}
-          {isPlatformAdmin && (
-            <Link href="/admin/connections">
-              <Button variant="outline">Connections</Button>
-            </Link>
-          )}
-          {isPlatformAdmin && (
-            <Link href="/admin/runs">
-              <Button variant="outline">Run History</Button>
-            </Link>
-          )}
-          {isPlatformAdmin && (
-            <Link href="/admin/settings">
-              <Button variant="outline">Settings</Button>
-            </Link>
-          )}
+        <div className="card-ventriloc p-5">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Users</div>
+          <div
+            className="mt-2 font-space-grotesk text-3xl font-medium text-foreground"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            {users.length}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">across all tenants</div>
         </div>
       </div>
 
       <TenantList tenants={tenants} token={token} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>User accounts configured in the backend.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
-                <th className="py-2">Email</th>
-                <th>Role</th>
-                <th>Tenants</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => {
-                const assignedNames = (u.tenant_ids ?? [])
-                  .map((tid) => tenants.find((t) => t.id === tid)?.name ?? tid)
-                  .join(", ") || "—";
-                return (
-                  <tr key={u.id} className="border-b last:border-b-0">
-                    <td className="py-2">{u.email}</td>
-                    <td>
-                      <Badge variant={u.role === "PLATFORM_ADMIN" ? "brand" : "secondary"}>
-                        {ROLE_LABELS[u.role] ?? u.role}
-                      </Badge>
-                    </td>
-                    <td className="text-xs">{assignedNames}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-
     </div>
   );
 }

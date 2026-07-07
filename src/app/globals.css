@@ -4,14 +4,14 @@
 
 @layer base {
   :root {
-    /* Ventriloc — Mist canvas / Paper cards / Signal Orange accent */
-    --background:          0 0% 94%;   /* Mist    #efefef */
+    /* Swiss Executive — Fog canvas / Paper cards / Signal Orange accent */
+    --background:          0 0% 96%;   /* Fog     #f5f5f5 */
     --foreground:          0 0% 13%;   /* Carbon  #202020 */
     --card:                0 0% 100%;  /* Paper   #ffffff */
     --card-foreground:     0 0% 13%;
     --popover:             0 0% 100%;
     --popover-foreground:  0 0% 13%;
-    --primary:             0 0% 13%;   /* Carbon  #202020 */
+    --primary:             16 100% 59%; /* Signal Orange #ff682c */
     --primary-foreground:  0 0% 100%;
     --secondary:           0 0% 96%;   /* Fog     #f5f5f5 */
     --secondary-foreground:0 0% 30%;   /* Graphite #4d4d4d */
@@ -27,6 +27,56 @@
     --radius:              0.5rem;      /* 8px cards */
     --brand:               16 100% 59%; /* Signal Orange #ff682c */
     --brand-foreground:    0 0% 100%;
+
+    /* Swiss Executive — new tokens */
+    --sidebar-bg:          0 0% 98%;   /* #fafafa */
+    --sidebar-hover:       0 0% 94%;   /* #f0f0f0 */
+    --sidebar-active:      16 100% 59% / 0.08; /* Signal Orange at 8% */
+    --success:             142 71% 45%; /* #22c55e */
+    --success-foreground:  0 0% 100%;
+    --warning:             38 92% 50%;  /* #f59e0b */
+    --warning-foreground:  0 0% 100%;
+    --danger:              0 84% 60%;   /* #ef4444 */
+    --danger-foreground:   0 0% 100%;
+    --info:                217 91% 60%; /* #3b82f6 */
+    --info-foreground:     0 0% 100%;
+  }
+
+  .dark {
+    --background:          0 0% 7%;    /* #121212 */
+    --foreground:          0 0% 91%;   /* #e8e8e8 Chalk */
+    --card:                0 0% 10%;   /* #1a1a1a */
+    --card-foreground:     0 0% 91%;
+    --popover:             0 0% 10%;
+    --popover-foreground:  0 0% 91%;
+    --primary:             20 100% 63%; /* #ff7a45 warm orange */
+    --primary-foreground:  0 0% 100%;
+    --secondary:           0 0% 12%;   /* #1f1f1f */
+    --secondary-foreground:0 0% 63%;
+    --muted:               0 0% 12%;
+    --muted-foreground:    0 0% 63%;   /* #a0a0a0 */
+    --accent:              0 0% 18%;   /* #2d2d2d */
+    --accent-foreground:   0 0% 63%;
+    --destructive:         0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border:              0 0% 18%;   /* #2d2d2d */
+    --input:               0 0% 18%;
+    --ring:                20 100% 63%; /* warm orange */
+    --radius:              0.5rem;
+    --brand:               20 100% 63%;
+    --brand-foreground:    0 0% 100%;
+
+    --sidebar-bg:          0 0% 9%;    /* #161616 */
+    --sidebar-hover:       0 0% 12%;   /* #1f1f1f */
+    --sidebar-active:      20 100% 63% / 0.12;
+    --success:             142 69% 58%; /* #4ade80 */
+    --success-foreground:  0 0% 7%;
+    --warning:             45 93% 47%;  /* #fbbf24 */
+    --warning-foreground:  0 0% 7%;
+    --danger:              0 91% 71%;   /* #f87171 */
+    --danger-foreground:   0 0% 100%;
+    --info:                213 94% 68%; /* #60a5fa */
+    --info-foreground:     0 0% 7%;
   }
 }
 
@@ -38,6 +88,7 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    transition: background-color 200ms ease, color 200ms ease;
   }
 }
 
@@ -118,4 +169,35 @@ body::before {
   body::before {
     animation: none;
   }
+}
+
+.dark body::before {
+  background:
+    radial-gradient(ellipse 70% 55% at 0% 0%, hsl(20 100% 63% / 0.04) 0%, transparent 70%),
+    radial-gradient(ellipse 65% 60% at 100% 100%, hsl(28 80% 60% / 0.03) 0%, transparent 70%);
+  animation: none;
+}
+
+/* ── Custom scrollbar ────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
 }

@@ -668,18 +668,50 @@ def main() -> None:
         print(f"  {r['name']:30s} | {r['visits']:5d} visits | {r['photos']:5d} photos | {r['slots']} slots | {r['campaign']}")
     print(f"\nTotal: {total_visits:,} visits | {total_photos:,} photos")
 
-    # Create admin user
+    # Create admin + demo login users
     admin_password = "Demo123!"
     admin_hash = hash_password(admin_password)
     if not args.dry_run:
+        labatt_project_id = f"project_{TENANT_DEFS[0][2].replace('-', '_')}"
         with psycopg.connect(db_url) as conn:
             with conn.cursor() as cursor:
+                # Default company (also created by migration 001) so demo users can carry a
+                # valid company_id FK even on a fresh, migrations-not-yet-applied seed.
+                cursor.execute(
+                    """
+                    INSERT INTO dashboard.companies (company_id, name, slug)
+                    VALUES ('company_default', 'Default Company', 'default')
+                    ON CONFLICT (company_id) DO NOTHING
+                    """
+                )
                 cursor.execute(SQL_UPSERT_USER, (
                     "user_admin", None, "admin@demo.local", "Demo Admin",
                     "ADMIN", [], admin_hash,
                 ))
+                # Demo accounts mirrored from the in-memory fixture
+                # (services/common/repository.py seed_phase01_repository). Both live on Labatt,
+                # which is always seeded.
+                cursor.execute(SQL_UPSERT_USER, (
+                    "user_client", LABATT_TENANT_ID, "client@demo.local", "Demo Client",
+                    "TENANT_USER", [labatt_project_id], admin_hash,
+                ))
+                cursor.execute(SQL_UPSERT_USER, (
+                    "user_client_admin", None, "clientadmin@demo.local", "Client Admin",
+                    "CLIENT_ADMIN", [], admin_hash,
+                ))
+                # SQL_UPSERT_USER does not set company_id / tenant_ids; set the scoping the
+                # demo accounts need (a NULL-tenant CLIENT_ADMIN is not covered by migration 001).
+                cursor.execute(
+                    """
+                    UPDATE dashboard.users
+                    SET company_id = 'company_default', tenant_ids = %s
+                    WHERE user_id IN ('user_client', 'user_client_admin')
+                    """,
+                    ([LABATT_TENANT_ID],),
+                )
             conn.commit()
         print(f"\nAdmin user created: admin@demo.local / {admin_password}")
+        print(f"Demo users created: client@demo.local, clientadmin@demo.local / {admin_password}")
 
 
 if __name__ == "__main__":

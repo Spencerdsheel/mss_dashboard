@@ -24,12 +24,17 @@ function longDate(isoDate: string): string {
   return d.toLocaleDateString("en-CA", { month: "short", day: "2-digit", year: "numeric" });
 }
 
+// Recharts renders these as inline SVG/DOM styles, so Tailwind classes don't
+// apply here. We reference the CSS custom properties directly via hsl(var(...))
+// so the chart chrome (grid, axes, tooltip) follows light/dark mode just like
+// the rest of the UI. Only chart data colors (e.g. the primary orange fill)
+// stay as fixed brand hex values.
 const TOOLTIP_STYLE = {
   borderRadius: 8,
-  border: "1px solid #e8e8e8",
-  background: "#ffffff",
+  border: "1px solid hsl(var(--border))",
+  background: "hsl(var(--card))",
   fontSize: 12,
-  color: "#202020",
+  color: "hsl(var(--foreground))",
   boxShadow: "0 1px 3px rgba(32,32,32,0.08)",
 } as const;
 
@@ -41,63 +46,65 @@ export const TrendChart = memo(function TrendChart({
 }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-[240px] items-center justify-center text-xs text-slate">
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
         No data
       </div>
     );
   }
 
   return (
-    <div className="h-[240px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-          <defs>
-            <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#ff682c" stopOpacity={0.18} />
-              <stop offset="95%" stopColor="#ff682c" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid
-            strokeDasharray="0"
-            stroke="#e8e8e8"
-            strokeOpacity={0.8}
-            vertical={false}
-          />
-          <XAxis
-            dataKey="date"
-            stroke="#828282"
-            fontSize={11}
-            tickLine={false}
-            axisLine={false}
-            fontFamily="var(--font-inter)"
-            tickFormatter={shortDate}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            stroke="#828282"
-            fontSize={11}
-            tickLine={false}
-            axisLine={false}
-            fontFamily="var(--font-inter)"
-            allowDecimals={false}
-          />
-          <Tooltip
-            cursor={{ stroke: "#e8e8e8", strokeWidth: 1 }}
-            contentStyle={TOOLTIP_STYLE}
-            formatter={(value: number) => [value, "Visits"]}
-            labelFormatter={longDate}
-          />
-          <Area
-            type="monotone"
-            dataKey="count"
-            stroke="#ff682c"
-            strokeWidth={2}
-            fill="url(#trendGradient)"
-            dot={false}
-            activeDot={{ r: 4, fill: "#ff682c", stroke: "#ffffff", strokeWidth: 2 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div className="relative h-full w-full min-h-0">
+      <div className="absolute inset-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <defs>
+              <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ff682c" stopOpacity={0.18} />
+                <stop offset="95%" stopColor="#ff682c" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              strokeDasharray="0"
+              stroke="hsl(var(--border))"
+              strokeOpacity={0.8}
+              vertical={false}
+            />
+            <XAxis
+              dataKey="date"
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              fontFamily="var(--font-inter)"
+              tickFormatter={shortDate}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              fontFamily="var(--font-inter)"
+              allowDecimals={false}
+            />
+            <Tooltip
+              cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+              contentStyle={TOOLTIP_STYLE}
+              formatter={(value: number) => [value, "Visits"]}
+              labelFormatter={longDate}
+            />
+            <Area
+              type="monotone"
+              dataKey="count"
+              stroke="#ff682c"
+              strokeWidth={2}
+              fill="url(#trendGradient)"
+              dot={false}
+              activeDot={{ r: 4, fill: "#ff682c", stroke: "hsl(var(--card))", strokeWidth: 2 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 });
@@ -112,78 +119,80 @@ export const CumulativeChart = memo(function CumulativeChart({
 }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-[240px] items-center justify-center text-xs text-slate">
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
         No data
       </div>
     );
   }
 
   return (
-    <div className="h-[240px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-          <defs>
-            <linearGradient id="cumulativeGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#ff682c" stopOpacity={0.15} />
-              <stop offset="95%" stopColor="#ff682c" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid
-            strokeDasharray="0"
-            stroke="#e8e8e8"
-            strokeOpacity={0.8}
-            vertical={false}
-          />
-          <XAxis
-            dataKey="date"
-            stroke="#828282"
-            fontSize={11}
-            tickLine={false}
-            axisLine={false}
-            fontFamily="var(--font-inter)"
-            tickFormatter={shortDate}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            stroke="#828282"
-            fontSize={11}
-            tickLine={false}
-            axisLine={false}
-            fontFamily="var(--font-inter)"
-            allowDecimals={false}
-          />
-          <Tooltip
-            cursor={{ stroke: "#e8e8e8", strokeWidth: 1 }}
-            contentStyle={TOOLTIP_STYLE}
-            formatter={(value: number) => [value, "Cumulative"]}
-            labelFormatter={longDate}
-          />
-          {target != null && target > 0 && (
-            <ReferenceLine
-              y={target}
-              stroke="#828282"
-              strokeDasharray="4 3"
-              strokeWidth={1.5}
-              label={{
-                value: `Target ${target.toLocaleString()}`,
-                position: "insideTopRight",
-                fontSize: 10,
-                fill: "#828282",
-                fontFamily: "var(--font-inter)",
-              }}
+    <div className="relative h-full w-full min-h-0">
+      <div className="absolute inset-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <defs>
+              <linearGradient id="cumulativeGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ff682c" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#ff682c" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              strokeDasharray="0"
+              stroke="hsl(var(--border))"
+              strokeOpacity={0.8}
+              vertical={false}
             />
-          )}
-          <Area
-            type="monotone"
-            dataKey="cumulative"
-            stroke="#ff682c"
-            strokeWidth={2}
-            fill="url(#cumulativeGradient)"
-            dot={false}
-            activeDot={{ r: 4, fill: "#ff682c", stroke: "#ffffff", strokeWidth: 2 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+            <XAxis
+              dataKey="date"
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              fontFamily="var(--font-inter)"
+              tickFormatter={shortDate}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              fontFamily="var(--font-inter)"
+              allowDecimals={false}
+            />
+            <Tooltip
+              cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+              contentStyle={TOOLTIP_STYLE}
+              formatter={(value: number) => [value, "Cumulative"]}
+              labelFormatter={longDate}
+            />
+            {target != null && target > 0 && (
+              <ReferenceLine
+                y={target}
+                stroke="hsl(var(--muted-foreground))"
+                strokeDasharray="4 3"
+                strokeWidth={1.5}
+                label={{
+                  value: `Target ${target.toLocaleString()}`,
+                  position: "insideTopRight",
+                  fontSize: 10,
+                  fill: "hsl(var(--muted-foreground))",
+                  fontFamily: "var(--font-inter)",
+                }}
+              />
+            )}
+            <Area
+              type="monotone"
+              dataKey="cumulative"
+              stroke="#ff682c"
+              strokeWidth={2}
+              fill="url(#cumulativeGradient)"
+              dot={false}
+              activeDot={{ r: 4, fill: "#ff682c", stroke: "hsl(var(--card))", strokeWidth: 2 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 });
@@ -196,7 +205,7 @@ export const LocationBarChart = memo(function LocationBarChart({
 }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-[240px] items-center justify-center text-xs text-slate">
+      <div className="flex h-[240px] items-center justify-center text-xs text-muted-foreground">
         No data
       </div>
     );
@@ -215,14 +224,14 @@ export const LocationBarChart = memo(function LocationBarChart({
         >
           <CartesianGrid
             strokeDasharray="0"
-            stroke="#e8e8e8"
+            stroke="hsl(var(--border))"
             strokeOpacity={0.8}
             vertical={true}
             horizontal={false}
           />
           <XAxis
             type="number"
-            stroke="#828282"
+            stroke="hsl(var(--muted-foreground))"
             fontSize={11}
             tickLine={false}
             axisLine={false}
@@ -232,7 +241,7 @@ export const LocationBarChart = memo(function LocationBarChart({
           <YAxis
             dataKey="city"
             type="category"
-            stroke="#828282"
+            stroke="hsl(var(--muted-foreground))"
             fontSize={11}
             tickLine={false}
             axisLine={false}
@@ -240,7 +249,7 @@ export const LocationBarChart = memo(function LocationBarChart({
             width={96}
           />
           <Tooltip
-            cursor={{ fill: "#efefef" }}
+            cursor={{ fill: "hsl(var(--muted))" }}
             contentStyle={TOOLTIP_STYLE}
             formatter={(value: number) => [value, "Visits"]}
           />

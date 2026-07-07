@@ -56,8 +56,8 @@ export function RunLogList({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="rounded-md border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-sm" style={{ minWidth: "700px" }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
               <th className="py-3 px-4">Tenant</th>
@@ -102,7 +102,7 @@ export function RunLogList({ token }: { token: string }) {
                     </td>
                     <td className="py-3 px-4">{duration}</td>
                     <td className="py-3 px-4">{log.rows_pulled}</td>
-                    <td className="py-3 px-4 max-w-xs truncate text-red-600">
+                    <td className="py-3 px-4 max-w-xs truncate text-danger">
                       {log.error_message || "—"}
                     </td>
                   </tr>
