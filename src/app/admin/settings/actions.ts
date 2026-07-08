@@ -1,9 +1,9 @@
-﻿"use server";
+"use server";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { adminGetSetting, adminUpdateSetting } from "@/server/admin-api";
+import { adminGetAllSettings, adminUpdateSetting } from "@/server/admin-api";
 
 export async function getSettingsData() {
   const cookieStore = await cookies();
@@ -11,28 +11,24 @@ export async function getSettingsData() {
   if (!token) redirect("/login");
 
   try {
-    const siteTitle = await adminGetSetting(token.value, "site_title");
-    return { siteTitle: siteTitle.value };
+    const settings = await adminGetAllSettings(token.value);
+    return { settings };
   } catch {
-    return { siteTitle: "iSN" };
+    return { settings: {} as Record<string, string> };
   }
 }
 
-export async function updateSiteTitle(formData: FormData) {
+export async function updateSetting(key: string, value: string) {
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token");
   if (!token) redirect("/login");
 
-  const value = formData.get("site_title") as string;
-  if (!value || value.trim().length === 0) {
-    return { error: "Site title cannot be empty" };
-  }
-
   try {
-    await adminUpdateSetting(token.value, "site_title", value.trim());
+    await adminUpdateSetting(token.value, key, value.trim());
     revalidatePath("/dashboard", "layout");
+    revalidatePath("/admin", "layout");
     return { success: true };
   } catch {
-    return { error: "Failed to update site title" };
+    return { error: `Failed to update ${key}` };
   }
 }

@@ -52,3 +52,21 @@ export function formatPct(value: number, total: number): string {
   if (!total || Number.isNaN(value) || Number.isNaN(total)) return "0%";
   return `${Math.round((value / total) * 100)}%`;
 }
+
+export function hexToHsl(hex: string): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16) / 255;
+  const g = parseInt(h.substring(2, 4), 16) / 255;
+  const b = parseInt(h.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return `0 0% ${Math.round(l * 100)}%`;
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let hue = 0;
+  if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+  else if (max === g) hue = ((b - r) / d + 2) * 60;
+  else hue = ((r - g) / d + 4) * 60;
+  return `${Math.round(hue)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}

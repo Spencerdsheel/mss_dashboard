@@ -1,11 +1,11 @@
 import { getConnectionsData } from "./actions";
 import { ConnectionsClient } from "./connections-client";
-import { requireAdmin } from "@/server/rbac";
+import { requireAdminOrAbove } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminConnectionsPage() {
-  await requireAdmin();
+  await requireAdminOrAbove();
   const data = await getConnectionsData();
 
   return (

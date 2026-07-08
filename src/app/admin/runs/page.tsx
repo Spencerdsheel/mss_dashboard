@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { RunLogList } from "@/components/admin/run-log-list";
-import { requireAdmin } from "@/server/rbac";
+import { requireAdminOrAbove } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRunsPage() {
-  await requireAdmin();
+  await requireAdminOrAbove();
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value || "";
 

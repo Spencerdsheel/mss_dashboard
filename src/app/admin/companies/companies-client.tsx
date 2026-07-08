@@ -21,9 +21,11 @@ import { createCompanyAction, updateCompanyAction } from "./actions";
 interface CompaniesClientProps {
   companies: AdminCompany[];
   tenants: AdminTenant[];
+  userRole: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER";
 }
 
-export function CompaniesClient({ companies, tenants }: CompaniesClientProps) {
+export function CompaniesClient({ companies, tenants, userRole }: CompaniesClientProps) {
+  const canEdit = userRole === "PLATFORM_ADMIN";
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<AdminCompany | null>(null);
@@ -86,9 +88,11 @@ export function CompaniesClient({ companies, tenants }: CompaniesClientProps) {
             Manage companies and view their assigned tenants.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleOpenCreate}>Create Company</Button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <Button onClick={handleOpenCreate}>Create Company</Button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -105,7 +109,7 @@ export function CompaniesClient({ companies, tenants }: CompaniesClientProps) {
               <th className="py-3 px-4">Slug</th>
               <th className="py-3 px-4">Status</th>
               <th className="py-3 px-4">Tenants</th>
-              <th className="py-3 px-4">Actions</th>
+              {canEdit && <th className="py-3 px-4">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -130,15 +134,17 @@ export function CompaniesClient({ companies, tenants }: CompaniesClientProps) {
                       </div>
                     )}
                   </td>
-                  <td className="py-3 px-4">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleOpenEdit(company)}
-                    >
-                      Edit
-                    </Button>
-                  </td>
+                  {canEdit && (
+                    <td className="py-3 px-4">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenEdit(company)}
+                      >
+                        Edit
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               );
             })}

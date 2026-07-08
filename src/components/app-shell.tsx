@@ -5,7 +5,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { cn } from "@/lib/utils";
+import { cn, hexToHsl } from "@/lib/utils";
 
 const COLLAPSED_KEY = "sidebar-collapsed";
 
@@ -13,10 +13,16 @@ export function AppShell({
   children,
   session,
   siteTitle = "iSN",
+  logoText = "iSN",
+  footerText = "iSN Dashboard",
+  brandColor,
 }: {
   children: ReactNode;
   session: { user: { email?: string | null; name?: string | null; role: "PLATFORM_ADMIN" | "CLIENT_ADMIN" | "TENANT_USER" } };
   siteTitle?: string;
+  logoText?: string;
+  footerText?: string;
+  brandColor?: string;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -36,8 +42,17 @@ export function AppShell({
     };
   }, []);
 
+  const brandOverride =
+    brandColor && brandColor !== "#ff682c"
+      ? `:root { --brand: ${hexToHsl(brandColor)}; --primary: ${hexToHsl(brandColor)}; } .dark { --brand: ${hexToHsl(brandColor)}; --primary: ${hexToHsl(brandColor)}; }`
+      : null;
+
   return (
     <div className="min-h-screen bg-background">
+      {brandOverride && (
+        <style dangerouslySetInnerHTML={{ __html: brandOverride }} />
+      )}
+
       {/* Sidebar */}
       <Sidebar
         user={{
@@ -85,9 +100,6 @@ export function AppShell({
           </div>
         </header>
 
-        {/* Page content — fixed viewport height; scrolls when content overflows it.
-            Per-project dashboard pages size their own content to match this height
-            exactly (see [projectId]/layout.tsx), so no scrollbar appears there. */}
         <main className="h-[calc(100dvh-48px)] overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>

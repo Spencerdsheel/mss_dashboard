@@ -124,7 +124,7 @@ async def redeem_password_reset(
 
 
 # Whitelisted keys that can be read without authentication
-_PUBLIC_SETTING_KEYS = {"site_title"}
+_PUBLIC_SETTING_KEYS = {"site_title", "logo_text", "footer_text", "brand_color"}
 
 
 @router.get("/settings/public/{key}")
@@ -135,12 +135,11 @@ async def get_public_setting(
     if key not in _PUBLIC_SETTING_KEYS:
         raise HTTPException(status_code=404, detail="Setting not found")
     method = getattr(repository, "get_platform_setting", None)
+    _defaults = {"site_title": "iSN", "logo_text": "iSN", "footer_text": "iSN Dashboard", "brand_color": "#ff682c"}
     if method is None:
-        defaults = {"site_title": "iSN"}
-        value = defaults.get(key)
+        value = _defaults.get(key)
     else:
         value = await method(key)
     if value is None:
-        defaults = {"site_title": "iSN"}
-        value = defaults.get(key, "")
+        value = _defaults.get(key, "")
     return {"key": key, "value": value}

@@ -54,6 +54,8 @@ class DashboardRepository(Protocol):
 
     async def list_run_logs(self) -> list[RunLog]: ...
 
+    async def list_run_logs_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[RunLog]: ...
+
     async def issue_password_reset_token(
         self,
         *,
@@ -78,6 +80,8 @@ class DashboardRepository(Protocol):
     async def update_project_metrics(self, project_id: str, metrics: list[dict]) -> list[dict]: ...
 
     async def get_platform_setting(self, key: str) -> str | None: ...
+
+    async def get_platform_settings(self, keys: list[str]) -> dict[str, str]: ...
 
     async def set_platform_setting(self, key: str, value: str) -> str: ...
 
@@ -248,6 +252,13 @@ class InMemoryDashboardRepository:
     async def list_run_logs(self) -> list[RunLog]:
         return sorted(self.run_logs, key=lambda r: r.started_at, reverse=True)
 
+    async def list_run_logs_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[RunLog]:
+        tid_set = set(tenant_ids)
+        return sorted(
+            [r for r in self.run_logs if r.tenant_id in tid_set],
+            key=lambda r: r.started_at, reverse=True,
+        )
+
     async def update_project(
         self,
         tenant_id: str,
@@ -323,10 +334,22 @@ class InMemoryDashboardRepository:
             }
         return await self.list_project_metrics(project_id)
 
-    async def get_platform_setting(self, key: str) -> str | None:
-        if key == "site_title":
-            return "iSN"
-        return None
+    _SETTING_DEFAULTS: dict[str, str] = {
+        "site_title": "iSN",
+        "logo_text": "iSN",
+        "footer_text": "iSN Dashboard",
+        "brand_color": "#ff682c",
+        "default_theme": "system",
+        "date_format": "MM/DD/YYYY",
+        "support_email": "",
+        "support_url": "",
+    }
+
+    async def get_platform_setting(self, key: str) -> str | None:
+        return self._SETTING_DEFAULTS.get(key)
+
+    async def get_platform_settings(self, keys: list[str]) -> dict[str, str]:
+        return {k: v for k, v in self._SETTING_DEFAULTS.items() if k in keys}
 
     async def set_platform_setting(self, key: str, value: str) -> str:
         return value

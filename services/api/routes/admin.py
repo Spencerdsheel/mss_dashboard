@@ -16,6 +16,11 @@ from services.ingestion.tasks import run_tenant_refresh
 # S8: Set of allowed Role string values for user create/update validation.
 _ALLOWED_ROLES = {r.value for r in Role}
 
+_PUBLIC_SETTINGS = {"site_title", "logo_text", "footer_text", "brand_color"}
+_APPEARANCE_SETTINGS = {"brand_color", "default_theme", "date_format"}
+_ADMIN_ONLY_SETTINGS = {"site_title", "logo_text", "footer_text", "support_email", "support_url"}
+_ALL_SETTINGS = _APPEARANCE_SETTINGS | _ADMIN_ONLY_SETTINGS
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
@@ -30,6 +35,11 @@ def require_client_admin_or_above(claims=Depends(get_current_claims)):
     """CLIENT_ADMIN or PLATFORM_ADMIN — for company-scoped admin ops."""
     if claims.role not in (Role.PLATFORM_ADMIN, Role.CLIENT_ADMIN):
         raise AuthorizationError("Admin role required")
+    return claims
+
+
+def require_authenticated(claims=Depends(get_current_claims)):
+    """Any authenticated user."""
     return claims
 
 
@@ -373,10 +383,12 @@ async def set_scheduled_refresh_status(
 
 @router.get("/runs")
 async def list_runs(
-    _claims=Depends(require_platform_admin),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
-    return [to_public_dict(run) for run in await repository.list_run_logs()]
+    if claims.role == Role.PLATFORM_ADMIN:
+        return [to_public_dict(run) for run in await repository.list_run_logs()]
+    return [to_public_dict(run) for run in await repository.list_run_logs_for_tenants(claims.tenant_ids)]
 
 
 @router.get("/users")
@@ -591,12 +603,28 @@ async def update_project_metrics(
         raise NotFoundError(str(exc)) from exc
 
 
+@router.get("/settings")
+async def list_settings(
+    claims=Depends(require_authenticated),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    method = require_admin_operation(repository, "get_platform_settings")
+    all_values = await method(list(_ALL_SETTINGS))
+    if claims.role not in (Role.PLATFORM_ADMIN, Role.CLIENT_ADMIN):
+        return {k: v for k, v in all_values.items() if k in _APPEARANCE_SETTINGS}
+    return all_values
+
+
 @router.get("/settings/{key}")
 async def get_setting(
     key: str,
-    _claims=Depends(require_platform_admin),
+    claims=Depends(require_authenticated),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
+    if key not in _ALL_SETTINGS:
+        raise NotFoundError(f"Setting '{key}' not found")
+    if key in _ADMIN_ONLY_SETTINGS and claims.role not in (Role.PLATFORM_ADMIN, Role.CLIENT_ADMIN):
+        raise AuthorizationError("Admin role required")
     method = require_admin_operation(repository, "get_platform_setting")
     value = await method(key)
     if value is None:
@@ -608,9 +636,13 @@ async def get_setting(
 async def update_setting(
     key: str,
     request: SettingUpdateRequest,
-    _claims=Depends(require_platform_admin),
+    claims=Depends(require_authenticated),
     repository: DashboardRepository = Depends(get_repository),
 ) -> dict:
+    if key not in _ALL_SETTINGS:
+        raise NotFoundError(f"Setting '{key}' not found")
+    if key in _ADMIN_ONLY_SETTINGS and claims.role not in (Role.PLATFORM_ADMIN, Role.CLIENT_ADMIN):
+        raise AuthorizationError("Admin role required")
     method = require_admin_operation(repository, "set_platform_setting")
     value = await method(key, request.value)
     return {"key": key, "value": value}
@@ -620,12 +652,16 @@ async def update_setting(
 
 @router.get("/companies")
 async def list_companies(
-    _claims=Depends(require_platform_admin),
+    claims=Depends(require_client_admin_or_above),
     repository: DashboardRepository = Depends(get_repository),
 ) -> list[dict]:
-    companies = await repository.list_companies()
+    all_companies = await repository.list_companies()
+    if claims.role == Role.CLIENT_ADMIN:
+        admin_tenants = await repository.list_tenants_for_admin(claims.tenant_ids)
+        allowed_company_ids = {t.company_id for t in admin_tenants if t.company_id}
+        all_companies = [c for c in all_companies if c.id in allowed_company_ids]
     result = []
-    for company in companies:
+    for company in all_companies:
         d = to_public_dict(company)
         tenants = await repository.list_tenants_for_company(company.id)
         d["tenant_count"] = len(tenants)

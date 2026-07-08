@@ -60,7 +60,6 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
   const projectId = projectMatch?.[1];
 
   const isAdmin = user.role === "PLATFORM_ADMIN" || user.role === "CLIENT_ADMIN";
-  const isPlatformAdmin = user.role === "PLATFORM_ADMIN";
 
   const initial = (user.name || user.email || "?").trim().charAt(0).toUpperCase();
 
@@ -212,31 +211,27 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
                 isActive={pathname.startsWith("/admin/metrics")}
                 collapsed={collapsed}
               />
-              {isPlatformAdmin && (
-                <>
-                  <SidebarItem
-                    href="/admin/companies"
-                    icon={Building2}
-                    label="Companies"
-                    isActive={pathname.startsWith("/admin/companies")}
-                    collapsed={collapsed}
-                  />
-                  <SidebarItem
-                    href="/admin/connections"
-                    icon={Plug}
-                    label="Connections"
-                    isActive={pathname.startsWith("/admin/connections")}
-                    collapsed={collapsed}
-                  />
-                  <SidebarItem
-                    href="/admin/runs"
-                    icon={History}
-                    label="Run History"
-                    isActive={pathname.startsWith("/admin/runs")}
-                    collapsed={collapsed}
-                  />
-                </>
-              )}
+              <SidebarItem
+                href="/admin/companies"
+                icon={Building2}
+                label="Companies"
+                isActive={pathname.startsWith("/admin/companies")}
+                collapsed={collapsed}
+              />
+              <SidebarItem
+                href="/admin/connections"
+                icon={Plug}
+                label="Connections"
+                isActive={pathname.startsWith("/admin/connections")}
+                collapsed={collapsed}
+              />
+              <SidebarItem
+                href="/admin/runs"
+                icon={History}
+                label="Run History"
+                isActive={pathname.startsWith("/admin/runs")}
+                collapsed={collapsed}
+              />
             </SidebarGroup>
           )}
         </nav>

@@ -557,6 +557,22 @@ class PostgresDashboardRepository:
         )
         return [run_log_from_row(row) for row in rows]
 
+    async def list_run_logs_for_tenants(self, tenant_ids: tuple[str, ...]) -> list[RunLog]:
+        if not tenant_ids:
+            return []
+        rows = await self._fetch_all_replica(
+            """
+            SELECT run_id, tenant_id, status, started_at, finished_at,
+                   rows_pulled, error_message
+            FROM dashboard.run_logs
+            WHERE tenant_id = ANY($1)
+            ORDER BY started_at DESC
+            LIMIT 100
+            """,
+            list(tenant_ids),
+        )
+        return [run_log_from_row(row) for row in rows]
+
     async def create_tenant(self, name: str, slug: str, locale: str = "fr-CA") -> Tenant:
         tenant_id = f"tenant_{slug.replace('-', '_')}"
         await self._execute(
@@ -1089,6 +1105,13 @@ class PostgresDashboardRepository:
             key,
         )
         return row["value"] if row else None
+
+    async def get_platform_settings(self, keys: list[str]) -> dict[str, str]:
+        rows = await self._fetch_all(
+            "SELECT key, value FROM dashboard.platform_settings WHERE key = ANY($1)",
+            keys,
+        )
+        return {row["key"]: row["value"] for row in rows}
 
     async def set_platform_setting(self, key: str, value: str) -> str:
         await self._execute(

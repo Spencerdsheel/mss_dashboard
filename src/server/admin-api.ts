@@ -283,6 +283,12 @@ export async function adminUpdateConnection(
   );
 }
 
+export async function adminGetAllSettings(
+  token: string
+): Promise<Record<string, string>> {
+  return backendGet<Record<string, string>>("/admin/settings", token);
+}
+
 export async function adminGetSetting(
   token: string,
   key: string

@@ -159,9 +159,30 @@ CREATE TABLE IF NOT EXISTS dashboard.platform_settings (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Seed default site title
+-- Seed default platform settings
 INSERT INTO dashboard.platform_settings (key, value)
 VALUES ('site_title', 'iSN')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('logo_text', 'iSN')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('footer_text', 'iSN Dashboard')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('brand_color', '#ff682c')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('default_theme', 'system')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('date_format', 'MM/DD/YYYY')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('support_email', '')
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('support_url', '')
 ON CONFLICT (key) DO NOTHING;
 -- P1.4: Per-project campaign model — variable install slots (1–4)
 CREATE TABLE IF NOT EXISTS dashboard.project_install_slots (
