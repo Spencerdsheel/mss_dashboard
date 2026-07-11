@@ -1,6 +1,7 @@
 import type {
   DashboardDataProvider,
   NormalizedVisit,
+  PaginatedVisitsResult,
   ProjectDescriptor,
   ProjectMetric,
   ProjectListItem,
@@ -30,6 +31,39 @@ type BackendPhoto = {
   kind: string;
   url: string;
   caption: string | null;
+};
+
+export type VisitFilters = {
+  city?: string;
+  install1?: string;
+  install2?: string;
+  install3?: string;
+};
+
+export type PaginatedVisitsResponse = {
+  items: Array<{
+    instance_id: string;
+    store_id: string;
+    store_name: string;
+    visit_date: string;
+    city: string | null;
+    address: string | null;
+    clerk_name: string | null;
+    install1: string | null;
+    install2: string | null;
+    install3: string | null;
+    overall_notes: string | null;
+    photo_count: number;
+  }>;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  total_count: number;
+  filter_options: {
+    cities: string[];
+    install1_values: string[];
+    install2_values: string[];
+    install3_values: string[];
+  };
 };
 
 export class RestApiProvider implements DashboardDataProvider {
@@ -90,6 +124,39 @@ export class RestApiProvider implements DashboardDataProvider {
     }));
   }
 
+  async listVisitsPaginated(params: {
+    cursor?: string;
+    limit?: number;
+    sort?: string;
+    dir?: "asc" | "desc";
+    search?: string;
+    filters?: VisitFilters;
+  }): Promise<PaginatedVisitsResult> {
+    const searchParams = new URLSearchParams();
+    if (params.cursor) searchParams.set("cursor", params.cursor);
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.sort) searchParams.set("sort", params.sort);
+    if (params.dir) searchParams.set("dir", params.dir);
+    if (params.search) searchParams.set("search", params.search);
+    if (params.filters && Object.keys(params.filters).length > 0) {
+      // Backend VisitFilters fields are list[str] | None (extra="forbid"),
+      // so single-value filters from the UI must be wrapped in arrays.
+      const backendFilters: Record<string, string[]> = {};
+      for (const [key, value] of Object.entries(params.filters)) {
+        if (value) backendFilters[key] = [value];
+      }
+      if (Object.keys(backendFilters).length > 0) {
+        searchParams.set("filters", JSON.stringify(backendFilters));
+      }
+    }
+    const qs = searchParams.toString();
+    return backendGet<PaginatedVisitsResponse>(
+      `/projects/${this.projectId}/visits${qs ? `?${qs}` : ""}`,
+      this.token
+    );
+  }
+
+  /** @deprecated Use listVisitsPaginated for paginated access */
   async listVisits(): Promise<NormalizedVisit[]> {
     const visits = await backendGet<
       Array<{
@@ -149,8 +216,11 @@ export class RestApiProvider implements DashboardDataProvider {
       );
       const photos = await this.listPhotos(surveyId);
       return mapVisitDetailToNormalized(visit, photos);
-    } catch {
-      return null;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("404")) {
+        return null;
+      }
+      throw err;
     }
   }
 

@@ -36,6 +36,20 @@ export class ShopmetricsProvider implements DashboardDataProvider {
     );
   }
 
+  async listVisitsPaginated(_params: {
+    cursor?: string;
+    limit?: number;
+    sort?: string;
+    dir?: "asc" | "desc";
+    search?: string;
+    filters?: Record<string, string | undefined>;
+  }): Promise<any> {
+    throw new Error(
+      "ShopmetricsProvider.listVisitsPaginated is not implemented in v1. " +
+        "Future work: call Shopmetrics API with server-side pagination."
+    );
+  }
+
   async getVisit(_surveyId: string): Promise<NormalizedVisit | null> {
     throw new Error(
       "ShopmetricsProvider.getVisit is not implemented in v1. " +

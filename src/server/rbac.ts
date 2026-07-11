@@ -4,6 +4,7 @@
 import { redirect } from "next/navigation";
 import { getDashboardProvider } from "./providers";
 import { getBackendSession } from "./backend-auth";
+import { backendGet } from "./backend-api";
 import { cookies } from "next/headers";
 import type { Role } from "@/types/role";
 
@@ -58,29 +59,41 @@ export async function requireAdminOrAbove(): Promise<AuthSession> {
  */
 export async function assertProjectAccess(projectId: string) {
   const session = await requireSession();
-  const { role, clientId, tenantIds } = session.user;
 
-  // S3: no token value or PII logged here
-  const provider = getDashboardProvider("rest-api", session.user.accessToken, projectId);
-  const projects = await provider.listProjects();
-  const project = projects.find((p) => p.id === projectId);
+  // S3: no token value or PII logged here. Access enforcement is delegated to
+  // the backend (tenant/project scoping is derived from verified JWT claims
+  // there, not re-derived client-side) — a single GET replaces the previous
+  // fetch-all-projects-then-search waterfall.
+  try {
+    const project = await backendGet<{
+      id: string;
+      name: string;
+      tenant_id: string;
+      slug: string;
+      client_name: string;
+      start_date: string | null;
+      end_date: string | null;
+      visit_count: number;
+    }>(`/projects/${projectId}`, session.user.accessToken);
 
-  if (!project) redirect("/dashboard");
-
-  if (role === "PLATFORM_ADMIN") return { session, project };
-
-  if (role === "CLIENT_ADMIN") {
-    if (!tenantIds.includes(project.clientSlug)) {
-      redirect("/dashboard");
-    }
-    return { session, project };
-  }
-
-  if (!clientId || project.clientSlug !== clientId) {
+    return {
+      session,
+      project: {
+        id: project.id,
+        name: project.name,
+        clientName: project.client_name,
+        clientSlug: project.tenant_id,
+        projectName: project.name,
+        projectSlug: project.slug,
+        startDate: project.start_date ? new Date(project.start_date) : new Date(),
+        endDate: project.end_date ? new Date(project.end_date) : new Date(),
+        providerKind: "rest-api" as const,
+        visitCount: project.visit_count ?? 0,
+      },
+    };
+  } catch {
     redirect("/dashboard");
   }
-
-  return { session, project };
 }
 
 /** Returns the list of projects the current user can see. */

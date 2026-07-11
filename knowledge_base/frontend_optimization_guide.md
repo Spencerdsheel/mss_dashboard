@@ -1241,3 +1241,44 @@ When these three are aligned, dashboards handle 100k+ transactions with smooth s
 ---
 
 > **Final thought from all sources:** Smooth dashboards are not built by making devices work harder. They're built by rendering less, rendering smarter, and rendering only when necessary. Every technique in this guide serves that single purpose.
+
+---
+
+## Beyond This Dashboard
+
+Techniques not covered by the sources above (and mostly not used in the iSN dashboard), worth knowing when building the next high-performance dashboard.
+
+### How the iSN dashboard actually applies this guide (ground truth)
+- Server-first RSC + App Router; charts lazy-loaded; fonts via `next/font` (subsetted Space Grotesk + Inter)
+- **Server-side pagination/filtering/search** (keyset cursors, 25–100 row pages) instead of client-side virtualization — the "render less" principle applied one layer earlier, at the data transfer
+- Redis SWR caching happens **server-side** (FastAPI + Redis) rather than via TanStack Query/Workbox on the client; every server fetch has a 30s `AbortSignal.timeout`
+- Web Vitals wired via `useReportWebVitals`; debounced search runs inside `startTransition`
+- No state library, no WebSockets, no service worker — deliberate scope choices, not omissions
+
+### Server-side rendering patterns beyond streaming SSR
+- **Partial Prerendering (PPR, Next.js):** static shell served instantly from the edge, dynamic holes streamed in — the formalization of "skeleton first, data second" without hand-built skeletons
+- **`use()` + promise-as-prop (React 19):** start a fetch in a server component, pass the *promise* to a client component, and suspend there — parallelizes server fetches with client hydration
+- **`useOptimistic` (React 19):** first-class optimistic UI for server actions, replacing hand-rolled TanStack `onMutate` rollback for the common case
+- **Resumability (Qwik):** serializes app state so the client resumes instead of hydrating — the theoretical endpoint of "ship less JS"; worth watching rather than adopting
+
+### Browser APIs the guide predates or skips
+- **`content-visibility: auto` + `contain-intrinsic-size`:** CSS-only virtualization — offscreen dashboard sections skip layout/paint entirely; often 80% of the benefit of react-window for zero JS
+- **`scheduler.yield()` / `isInputPending()`:** chunk long main-thread work and yield to input — the modern fix for INP-killing filter computations (fallback: `setTimeout` slicing)
+- **View Transitions API:** native animated transitions between routes/states; progressive enhancement with a few lines of CSS
+- **Speculation Rules API:** declarative prefetch/prerender of likely next pages (`<script type="speculationrules">`) — instant tab switches without a SPA router
+- **`fetchpriority="high"` and 103 Early Hints:** promote the LCP-critical request; start preloads before the HTML even finishes
+- **bfcache hygiene:** avoid `unload` handlers and keep pages bfcache-eligible — back/forward navigation becomes literally instant
+- **OffscreenCanvas:** move Canvas chart rendering into a Web Worker entirely; the main thread only transfers the bitmap
+- **CSS `@container` queries:** widgets that adapt to their grid cell rather than the viewport — essential for user-rearrangeable dashboard layouts
+
+### Data-heavy visualization techniques
+- **LTTB downsampling (Largest-Triangle-Three-Buckets):** the standard algorithm for reducing 1M time-series points to ~2k visually-faithful points before charting — better than naive nth-point sampling
+- **Level-of-detail (LOD) rendering:** serve pre-aggregated resolutions per zoom level (minute/hour/day rollups), like map tiles for charts
+- **Apache Arrow / typed arrays over JSON:** columnar binary transfer for large datasets; zero-parse on the client, 5–10x smaller than JSON for numeric tables
+- **DuckDB-WASM:** run analytical SQL (group-bys, window functions) client-side over Arrow/Parquet — enables fully interactive drill-down without a server round-trip per filter change
+- **WebGPU compute:** the successor to WebGL for both rendering and aggregation at extreme scale
+
+### Perceived-performance patterns beyond skeletons
+- **Stale-while-navigate:** keep the previous page's data visible (dimmed) during navigation instead of flashing a skeleton — React's `useDeferredValue` on route data achieves this
+- **Progressive data disclosure:** render the KPI row from a tiny fast endpoint first; hydrate heavy tables/charts from slower endpoints independently (one Suspense boundary per data source, not per page)
+- **Above-the-fold data budgets:** treat initial-viewport payload like a bundle budget (e.g. <50KB of data before first render); everything else loads on scroll/interaction

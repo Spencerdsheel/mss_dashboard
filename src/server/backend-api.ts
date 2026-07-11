@@ -86,6 +86,7 @@ async function backendFetch<T>(
     method: options.method,
     headers,
     body: options.body,
+    signal: AbortSignal.timeout(30_000),
   };
 
   // Apply caching strategy

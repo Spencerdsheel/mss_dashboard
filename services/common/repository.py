@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Protocol
+
+from pydantic import BaseModel, ConfigDict
 
 from .models import (
     AuthClaims,
@@ -23,16 +25,48 @@ from .security import hash_password, verify_password
 from .tenancy import assert_project_access
 
 
+class VisitFilters(BaseModel):
+    """Server-side filters for paginated visit listing.
+
+    extra="forbid" is a tenant-isolation control: it guarantees a caller can
+    never smuggle a tenant_id / project_id (or any other unexpected field)
+    into the filter payload — unknown keys are a hard 422, not silently
+    ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    install1: list[str] | None = None
+    install2: list[str] | None = None
+    install3: list[str] | None = None
+    install4: list[str] | None = None
+    city: list[str] | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+
+
 class DashboardRepository(Protocol):
     async def authenticate_user(self, email: str, password: str) -> User | None: ...
 
     async def list_projects(self, claims: AuthClaims) -> list[Project]: ...
 
-    async def get_project(self, project_id: str) -> Project | None: ...
+    async def get_project(self, project_id: str, tenant_ids: list[str] | None) -> Project | None: ...
 
     async def get_project_summary(self, claims: AuthClaims, project_id: str) -> ProjectSummary: ...
 
     async def list_visits(self, claims: AuthClaims, project_id: str) -> list[dict]: ...
+
+    async def list_visits_page(
+        self,
+        claims: AuthClaims,
+        project_id: str,
+        *,
+        cursor: dict | None,
+        limit: int,
+        direction: str,
+        search: str | None,
+        filters: "VisitFilters | None",
+    ) -> tuple[list[dict], int, dict]: ...
 
     async def get_visit(self, claims: AuthClaims, project_id: str, instance_id: str) -> Visit | None: ...
 
@@ -173,8 +207,14 @@ class InMemoryDashboardRepository:
             )
         ]
 
-    async def get_project(self, project_id: str) -> Project | None:
-        return next((p for p in self.projects if p.id == project_id), None)
+    async def get_project(self, project_id: str, tenant_ids: list[str] | None = None) -> Project | None:
+        if tenant_ids is not None and not tenant_ids:
+            return None
+        candidates = (p for p in self.projects if p.id == project_id)
+        if tenant_ids is not None:
+            tid_set = set(tenant_ids)
+            candidates = (p for p in candidates if p.tenant_id in tid_set)
+        return next(candidates, None)
 
     async def get_project_summary(self, claims: AuthClaims, project_id: str) -> ProjectSummary:
         project = assert_project_access(claims, await self.get_project(project_id))
@@ -223,6 +263,100 @@ class InMemoryDashboardRepository:
             visit_dict["photo_count"] = photo_counts.get(visit.instance_id, 0)
             result.append(visit_dict)
         return result
+
+    async def list_visits_page(
+        self,
+        claims: AuthClaims,
+        project_id: str,
+        *,
+        cursor: dict | None,
+        limit: int,
+        direction: str,
+        search: str | None,
+        filters: "VisitFilters | None",
+    ) -> tuple[list[dict], int, dict]:
+        """In-memory keyset pagination — mirrors the Postgres semantics for tests."""
+        project = assert_project_access(claims, await self.get_project(project_id))
+        project_photos = [p for p in self.photos if p.project_id == project.id]
+        from collections import Counter
+        photo_counts = Counter(p.instance_id for p in project_photos)
+
+        candidates = [v for v in self.visits if v.project_id == project.id]
+
+        if search:
+            term = search.strip().lower()
+            if term:
+                candidates = [v for v in candidates if term in v.store_name.lower()]
+
+        if filters is not None:
+            if filters.install1:
+                allowed = set(filters.install1)
+                candidates = [v for v in candidates if v.install1 in allowed]
+            if filters.install2:
+                allowed = set(filters.install2)
+                candidates = [v for v in candidates if v.install2 in allowed]
+            if filters.install3:
+                allowed = set(filters.install3)
+                candidates = [v for v in candidates if v.install3 in allowed]
+            if filters.install4:
+                allowed = set(filters.install4)
+                candidates = [v for v in candidates if v.install4 in allowed]
+            if filters.city:
+                allowed = set(filters.city)
+                candidates = [v for v in candidates if v.city in allowed]
+            if filters.date_from:
+                candidates = [v for v in candidates if v.visit_date >= filters.date_from.isoformat()]
+            if filters.date_to:
+                candidates = [v for v in candidates if v.visit_date <= filters.date_to.isoformat()]
+
+        total_count = len(candidates)
+
+        filter_options = {
+            "cities": sorted({v.city for v in candidates if v.city}),
+            "install1_values": sorted({v.install1 for v in candidates if v.install1}),
+            "install2_values": sorted({v.install2 for v in candidates if v.install2}),
+            "install3_values": sorted({v.install3 for v in candidates if v.install3}),
+        }
+
+        user_desc = direction == "desc"
+        # Determine effective scan order (mirrors PostgresDashboardRepository):
+        # a "prev" fetch scans in the opposite order, then the page is
+        # reversed back into user-facing order before returning.
+        scan_desc = user_desc
+        op = None
+        if cursor is not None:
+            if cursor["o"] == "next":
+                scan_desc = user_desc
+                op = "<" if user_desc else ">"
+            else:
+                scan_desc = not user_desc
+                op = ">" if user_desc else "<"
+
+        ordered = sorted(candidates, key=lambda v: (v.visit_date, v.instance_id), reverse=scan_desc)
+
+        if cursor is not None:
+            cd, cs = cursor["d"], cursor["s"]
+            if op == "<":
+                ordered = [v for v in ordered if (v.visit_date, v.instance_id) < (cd, cs)]
+            else:
+                ordered = [v for v in ordered if (v.visit_date, v.instance_id) > (cd, cs)]
+
+        page = ordered[: limit + 1]
+        has_more = len(page) > limit
+        page = page[:limit]
+
+        if cursor is not None and cursor["o"] == "prev":
+            page = list(reversed(page))
+
+        result: list[dict] = []
+        for visit in page:
+            visit_dict = to_public_dict(visit)
+            visit_dict["photo_count"] = photo_counts.get(visit.instance_id, 0)
+            visit_dict["_keyset_visit_date"] = visit.visit_date
+            visit_dict["_keyset_survey_id"] = visit.instance_id
+            visit_dict["_keyset_has_more"] = has_more
+            result.append(visit_dict)
+        return result, total_count, filter_options
 
     async def get_visit(self, claims: AuthClaims, project_id: str, instance_id: str) -> Visit | None:
         project = assert_project_access(claims, await self.get_project(project_id))

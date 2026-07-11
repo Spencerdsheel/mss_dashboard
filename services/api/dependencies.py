@@ -30,6 +30,7 @@ def get_repository() -> DashboardRepository:
             max_size=settings.db_pool_max_size,
             timeout=settings.db_pool_timeout,
             read_replica_url=settings.read_replica_url,
+            via_pgbouncer=settings.db_via_pgbouncer,
         )
     return _memory_repository
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import sentry_sdk
@@ -24,7 +25,7 @@ if settings.environment == "production" and settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.environment,
-        traces_sample_rate=1.0,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
         send_default_pii=False,  # S3: never send PII (emails, IPs) to Sentry
     )
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
+
 import asyncpg
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from services.api.dependencies import get_current_claims, get_repository, get_settings
 from services.api.exceptions import AuthorizationError, ConflictError, NotFoundError
@@ -82,6 +84,15 @@ class ProviderConnectionRequest(BaseModel):
     display_name: str | None = None
 
 
+_MIN_PASSWORD_LENGTH = 8
+
+
+def _validate_password_strength(v: str) -> str:
+    if len(v) < _MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {_MIN_PASSWORD_LENGTH} characters")
+    return v
+
+
 class UserCreateRequest(BaseModel):
     email: str
     name: str | None = None
@@ -90,6 +101,8 @@ class UserCreateRequest(BaseModel):
     project_ids: list[str] = []
     tenant_ids: list[str] = []
     password: str
+
+    _check_password = field_validator("password")(_validate_password_strength)
 
 
 class UserUpdateRequest(BaseModel):
@@ -100,6 +113,13 @@ class UserUpdateRequest(BaseModel):
     tenant_ids: list[str] | None = None
     status: str | None = None
     password: str | None = None
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_password_strength(v)
+        return v
 
 
 class ProjectUpdateRequest(BaseModel):
@@ -342,18 +362,38 @@ async def get_task_status(
     return response
 
 
+_schedule_redis_client: "redis.Redis | None" = None
+
+
+def _get_schedule_redis(redis_url: str | None) -> "redis.Redis | None":
+    import redis as _redis
+
+    global _schedule_redis_client
+    if not redis_url:
+        return None
+    if _schedule_redis_client is None:
+        _schedule_redis_client = _redis.from_url(
+            redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2,
+        )
+    return _schedule_redis_client
+
+
+class ScheduledRefreshRequest(BaseModel):
+    enabled: bool = True
+
+
 @router.get("/tenants/{tenant_id}/scheduled-refresh")
 async def get_scheduled_refresh_status(
     tenant_id: str,
     claims=Depends(require_client_admin_or_above),
+    repository: DashboardRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    import redis
-
-    enabled = True  # default
-    if settings.redis_url:
+    await _assert_company_access_to_tenant(claims, tenant_id, repository)
+    enabled = True
+    client = _get_schedule_redis(settings.redis_url)
+    if client is not None:
         try:
-            client = redis.from_url(settings.redis_url, decode_responses=True)
             val = client.get(f"scheduled_refresh:{tenant_id}")
             if val is not None:
                 enabled = val == "1"
@@ -365,20 +405,17 @@ async def get_scheduled_refresh_status(
 @router.post("/tenants/{tenant_id}/scheduled-refresh")
 async def set_scheduled_refresh_status(
     tenant_id: str,
-    request: dict,
+    request: ScheduledRefreshRequest,
     _claims=Depends(require_platform_admin),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    import redis
-
-    enabled = request.get("enabled", True)
-    if settings.redis_url:
+    client = _get_schedule_redis(settings.redis_url)
+    if client is not None:
         try:
-            client = redis.from_url(settings.redis_url, decode_responses=True)
-            client.set(f"scheduled_refresh:{tenant_id}", "1" if enabled else "0")
+            client.set(f"scheduled_refresh:{tenant_id}", "1" if request.enabled else "0")
         except Exception:
             pass
-    return {"tenant_id": tenant_id, "enabled": enabled}
+    return {"tenant_id": tenant_id, "enabled": request.enabled}
 
 
 @router.get("/runs")
@@ -643,6 +680,8 @@ async def update_setting(
         raise NotFoundError(f"Setting '{key}' not found")
     if key in _ADMIN_ONLY_SETTINGS and claims.role not in (Role.PLATFORM_ADMIN, Role.CLIENT_ADMIN):
         raise AuthorizationError("Admin role required")
+    if key == "brand_color" and not re.match(r"^#[0-9a-fA-F]{6}$", request.value):
+        raise HTTPException(422, "brand_color must be a valid hex color (#RRGGBB)")
     method = require_admin_operation(repository, "set_platform_setting")
     value = await method(key, request.value)
     return {"key": key, "value": value}

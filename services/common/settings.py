@@ -32,9 +32,19 @@ class Settings:
     read_replica_url: str | None = None
     redis_url: str | None = None
     sentry_dsn: str | None = None
-    db_pool_min_size: int = 5
-    db_pool_max_size: int = 20
+    # PgBouncer sits in front of Postgres in transaction-pooling mode, so each
+    # uvicorn worker only needs a small local pool; PgBouncer multiplexes onto
+    # the shared server-side connections (see docker-compose.yml pgbouncer
+    # service). min=2/max=10 per worker keeps total client connections well
+    # under PgBouncer's MAX_CLIENT_CONN even with several workers + Celery.
+    db_pool_min_size: int = 2
+    db_pool_max_size: int = 10
     db_pool_timeout: float = 30.0
+    # When true, the asyncpg pool is created with statement_cache_size=0
+    # (required for correctness under PgBouncer transaction pooling).
+    db_via_pgbouncer: bool = False
+    sentry_traces_sample_rate: float = 0.1
+    sentry_celery_traces_sample_rate: float = 0.05
     # S1: Dedicated AES-256-GCM key for secret encryption (provider connection
     # secrets stored in the DB). Must differ from jwt_secret so compromise of
     # one does NOT compromise the other.
@@ -78,9 +88,14 @@ def load_settings() -> Settings:
         read_replica_url=os.getenv("READ_REPLICA_URL"),
         redis_url=os.getenv("REDIS_URL"),
         sentry_dsn=os.getenv("SENTRY_DSN"),
-        db_pool_min_size=int(os.getenv("DB_POOL_MIN_SIZE", "5")),
-        db_pool_max_size=int(os.getenv("DB_POOL_MAX_SIZE", "20")),
+        db_pool_min_size=int(os.getenv("DB_POOL_MIN_SIZE", "2")),
+        db_pool_max_size=int(os.getenv("DB_POOL_MAX_SIZE", "10")),
         db_pool_timeout=float(os.getenv("DB_POOL_TIMEOUT", "30")),
+        db_via_pgbouncer=os.getenv("DB_VIA_PGBOUNCER", "0").lower() in ("1", "true"),
+        sentry_traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        sentry_celery_traces_sample_rate=float(
+            os.getenv("SENTRY_CELERY_TRACES_SAMPLE_RATE", "0.05")
+        ),
         secret_encryption_key=os.getenv(
             "SECRET_ENCRYPTION_KEY", "dev-only-secret-encryption-key"
         ),

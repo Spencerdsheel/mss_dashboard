@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from typing import Any, Callable, Awaitable
 
 import redis.asyncio as aioredis
@@ -10,9 +12,22 @@ from services.common.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Bound on the tenant key-tracking SET's own TTL — self-healing in case a
+# tenant is never explicitly invalidated (e.g. dev environments).
+_TENANT_KEY_SET_TTL = 86400
+# Single-flight lock TTL for background SWR refreshes.
+_REFRESH_LOCK_TTL = 30
+
 
 class CacheAside:
-    """Redis-backed cache-aside pattern for expensive API endpoints."""
+    """Redis-backed cache-aside pattern for expensive API endpoints.
+
+    Supports both the plain get/set API (bare JSON values) and a
+    stale-while-revalidate (SWR) API that stores a small envelope
+    `{"v": value, "soft": unix_ts}` so warm requests never block on the DB:
+    a request past the soft TTL is served the (still fresh-enough) stale
+    value immediately while a single background task refreshes it.
+    """
 
     def __init__(self, redis_url: str | None = None, default_ttl: int = 300):
         self._redis: aioredis.Redis | None = None
@@ -48,12 +63,19 @@ class CacheAside:
             logger.warning(f"Cache get error: {exc}")
             return None
 
-    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+    async def set(self, key: str, value: Any, ttl: int | None = None, tenant_id: str | None = None) -> None:
         client = await self._get_client()
         if client is None:
             return
         try:
-            await client.set(key, json.dumps(value), ex=ttl or self._default_ttl)
+            if tenant_id:
+                pipe = client.pipeline()
+                pipe.set(key, json.dumps(value), ex=ttl or self._default_ttl)
+                pipe.sadd(f"t:{tenant_id}:keys", key)
+                pipe.expire(f"t:{tenant_id}:keys", _TENANT_KEY_SET_TTL)
+                await pipe.execute()
+            else:
+                await client.set(key, json.dumps(value), ex=ttl or self._default_ttl)
         except Exception as exc:
             logger.warning(f"Cache set error: {exc}")
 
@@ -67,7 +89,11 @@ class CacheAside:
             logger.warning(f"Cache delete error: {exc}")
 
     async def delete_pattern(self, pattern: str) -> None:
-        """Delete all keys matching a glob pattern."""
+        """Delete all keys matching a glob pattern.
+
+        Retained for backward compatibility; new invalidation call sites
+        should use `invalidate_tenant` (set-based, no SCAN) instead.
+        """
         client = await self._get_client()
         if client is None:
             return
@@ -82,28 +108,124 @@ class CacheAside:
         except Exception as exc:
             logger.warning(f"Cache delete_pattern error: {exc}")
 
+    # ── Tenant-namespaced tracked-key invalidation ──────────────────────────
 
-def cached_endpoint(
-    cache: CacheAside,
-    key_builder: Callable[..., str],
-    ttl: int = 300,
-):
-    """Decorator to add cache-aside behavior to FastAPI endpoint functions.
+    async def invalidate_tenant(self, tenant_id: str) -> None:
+        """Delete every cache key registered for *tenant_id*, plus the tracking set.
 
-    Usage:
-        @router.get("/projects/{id}/summary")
-        @cached_endpoint(cache, lambda project_id: f"summary:{project_id}", ttl=300)
-        async def get_summary(project_id: str):
-            ...
-    """
-    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            key = key_builder(*args, **kwargs)
-            cached = await cache.get(key)
-            if cached is not None:
-                return cached
-            result = await func(*args, **kwargs)
-            await cache.set(key, result, ttl)
-            return result
-        return wrapper
-    return decorator
+        Set-based — O(keys for this tenant), never a full-keyspace SCAN.
+        """
+        client = await self._get_client()
+        if client is None:
+            return
+        try:
+            set_key = f"t:{tenant_id}:keys"
+            keys = await client.smembers(set_key)
+            if keys:
+                await client.delete(*keys)
+            await client.delete(set_key)
+        except Exception as exc:
+            logger.warning(f"Cache invalidate_tenant error: {exc}")
+
+    # ── Stale-while-revalidate ───────────────────────────────────────────────
+
+    async def set_swr(
+        self,
+        key: str,
+        value: Any,
+        soft_ttl: int,
+        hard_ttl: int,
+        tenant_id: str,
+    ) -> None:
+        envelope = {"v": value, "soft": time.time() + soft_ttl}
+        await self._raw_set(key, envelope, hard_ttl, tenant_id)
+
+    async def _raw_set(self, key: str, envelope: dict, hard_ttl: int, tenant_id: str) -> None:
+        client = await self._get_client()
+        if client is None:
+            return
+        try:
+            pipe = client.pipeline()
+            pipe.set(key, json.dumps(envelope), ex=hard_ttl)
+            pipe.sadd(f"t:{tenant_id}:keys", key)
+            pipe.expire(f"t:{tenant_id}:keys", _TENANT_KEY_SET_TTL)
+            await pipe.execute()
+        except Exception as exc:
+            logger.warning(f"Cache set_swr error: {exc}")
+
+    async def get_swr(
+        self,
+        key: str,
+        *,
+        endpoint: str,
+        refresh: Callable[[], Awaitable[Any]],
+        soft_ttl: int,
+        hard_ttl: int,
+        tenant_id: str,
+    ) -> Any:
+        """Fetch *key* with stale-while-revalidate semantics.
+
+        - Cold miss: block on `refresh()` (caller pays the latency once),
+          populate the cache, return the fresh value. A DB error here
+          propagates (red line #2: no silent fallback on a cold miss).
+        - Warm hit, still fresh (`soft` in the future): return immediately.
+        - Warm hit, stale (`soft` in the past): return the stale value
+          immediately and kick off exactly one background refresh
+          (single-flight via `SET NX` lock) so a burst of concurrent
+          requests doesn't stampede the DB.
+        """
+        client = await self._get_client()
+        if client is None:
+            # No cache available — always compute fresh. This still must
+            # raise on failure, never return a silent empty fallback.
+            return await refresh()
+
+        raw = await self.get(key, endpoint=endpoint)
+        if raw is None:
+            value = await refresh()
+            await self.set_swr(key, value, soft_ttl, hard_ttl, tenant_id)
+            return value
+
+        if not isinstance(raw, dict) or "v" not in raw or "soft" not in raw:
+            # Legacy/foreign envelope shape — treat as a miss and refresh.
+            value = await refresh()
+            await self.set_swr(key, value, soft_ttl, hard_ttl, tenant_id)
+            return value
+
+        if raw["soft"] < time.time():
+            lock_key = f"{key}:lock"
+            try:
+                got_lock = await client.set(lock_key, "1", nx=True, ex=_REFRESH_LOCK_TTL)
+            except Exception as exc:
+                logger.warning(f"Cache SWR lock error: {exc}")
+                got_lock = False
+            if got_lock:
+                asyncio.create_task(
+                    self._refresh_and_store(key, refresh, soft_ttl, hard_ttl, tenant_id, lock_key)
+                )
+        return raw["v"]
+
+    async def _refresh_and_store(
+        self,
+        key: str,
+        refresh: Callable[[], Awaitable[Any]],
+        soft_ttl: int,
+        hard_ttl: int,
+        tenant_id: str,
+        lock_key: str,
+    ) -> None:
+        """Background SWR refresh. Must never let an exception escape —
+        this runs detached from any request, so a failure here must be
+        swallowed and logged rather than surfaced to a caller."""
+        client = await self._get_client()
+        try:
+            value = await refresh()
+            await self.set_swr(key, value, soft_ttl, hard_ttl, tenant_id)
+        except Exception as exc:
+            logger.warning(f"Background SWR refresh failed for {key}: {exc}")
+        finally:
+            if client is not None:
+                try:
+                    await client.delete(lock_key)
+                except Exception:
+                    pass

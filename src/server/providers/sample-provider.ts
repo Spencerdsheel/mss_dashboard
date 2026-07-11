@@ -11,6 +11,7 @@ import { generateSampleVisits } from "./sample-data";
 import type {
   DashboardDataProvider,
   NormalizedVisit,
+  PaginatedVisitsResult,
   ProjectDescriptor,
   ProjectMetric,
   ProjectListItem,
@@ -61,6 +62,66 @@ export class SampleDataProvider implements DashboardDataProvider {
 
   async listVisits(): Promise<NormalizedVisit[]> {
     return generateSampleVisits();
+  }
+
+  async listVisitsPaginated(params: {
+    cursor?: string;
+    limit?: number;
+    sort?: string;
+    dir?: "asc" | "desc";
+    search?: string;
+    filters?: Record<string, string | undefined>;
+  }): Promise<PaginatedVisitsResult> {
+    let visits = await this.listVisits();
+
+    if (params.search) {
+      const term = params.search.toLowerCase();
+      visits = visits.filter((v) => v.storeName.toLowerCase().includes(term));
+    }
+    if (params.filters) {
+      const { city, install1, install2, install3 } = params.filters;
+      if (city) visits = visits.filter((v) => v.city === city);
+      if (install1) visits = visits.filter((v) => v.install1 === install1);
+      if (install2) visits = visits.filter((v) => v.install2 === install2);
+      if (install3) visits = visits.filter((v) => v.install3 === install3);
+    }
+
+    const dir = params.dir === "asc" ? 1 : -1;
+    visits = [...visits].sort((a, b) => dir * (a.visitDate.getTime() - b.visitDate.getTime()));
+
+    const total_count = visits.length;
+    const limit = params.limit ?? 25;
+    const page = visits.slice(0, limit);
+
+    const allVisits = await this.listVisits();
+    const unique = (values: Array<string | null>) =>
+      Array.from(new Set(values.filter((v): v is string => !!v))).sort();
+
+    return {
+      items: page.map((v) => ({
+        instance_id: v.surveyId,
+        store_id: v.storeId,
+        store_name: v.storeName,
+        visit_date: v.visitDate.toISOString(),
+        city: v.city,
+        address: v.address,
+        clerk_name: v.clerkName,
+        install1: v.install1,
+        install2: v.install2,
+        install3: v.install3,
+        overall_notes: v.overallNotes,
+        photo_count: v.photoCount ?? 0,
+      })),
+      next_cursor: null,
+      prev_cursor: null,
+      total_count,
+      filter_options: {
+        cities: unique(allVisits.map((v) => v.city)),
+        install1_values: unique(allVisits.map((v) => v.install1)),
+        install2_values: unique(allVisits.map((v) => v.install2)),
+        install3_values: unique(allVisits.map((v) => v.install3)),
+      },
+    };
   }
 
   async getVisit(surveyId: string): Promise<NormalizedVisit | null> {

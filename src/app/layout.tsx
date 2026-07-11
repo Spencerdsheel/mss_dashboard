@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Inter } from "next/font/google";
+import { WebVitals } from "@/components/web-vitals";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         suppressHydrationWarning
         className={`${spaceGrotesk.variable} ${inter.variable} min-h-screen bg-background`}
       >
+        <WebVitals />
         {children}
       </body>
     </html>

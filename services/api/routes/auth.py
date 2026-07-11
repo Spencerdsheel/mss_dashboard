@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from services.api.dependencies import get_current_claims, get_repository, get_settings
 from services.api.exceptions import AuthenticationError
@@ -44,6 +44,13 @@ class PasswordResetRedeemRequest(BaseModel):
     email: str
     token: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_password_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
 
 
 @router.post("/login")

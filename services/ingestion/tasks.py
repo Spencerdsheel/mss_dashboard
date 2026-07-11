@@ -18,23 +18,42 @@ from services.ingestion.persistence import load_transformed_dataset
 logger = get_logger(__name__)
 
 
-def _invalidate_tenant_cache(tenant_id: str) -> None:
-    """Invalidate all cache entries for a tenant after refresh."""
-    import redis
+_task_redis_client: "redis.Redis | None" = None
 
+
+def _get_task_redis_client() -> "redis.Redis | None":
+    """Return a shared sync Redis client for Celery task operations."""
+    import redis as _redis
+
+    global _task_redis_client
     settings = load_settings()
-    redis_url = settings.redis_url
-    if not redis_url:
+    if not settings.redis_url:
+        return None
+    if _task_redis_client is None:
+        _task_redis_client = _redis.from_url(
+            settings.redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2,
+        )
+    return _task_redis_client
+
+
+def _invalidate_tenant_cache(tenant_id: str) -> None:
+    """Invalidate all cache entries for a tenant after refresh.
+
+    Set-based invalidation (Task 2.8): every cache key written for this
+    tenant is tracked in the `t:{tenant_id}:keys` Redis SET (see
+    CacheAside.set / set_swr). Deleting that set's members is O(keys for
+    this tenant) — no full-keyspace SCAN, which would be O(all keys) and
+    contend with every other tenant's traffic on a shared Redis instance.
+    """
+    client = _get_task_redis_client()
+    if client is None:
         return
     try:
-        client = redis.from_url(redis_url, decode_responses=True)
-        cursor = 0
-        while True:
-            cursor, keys = client.scan(cursor=cursor, match=f"*:{tenant_id}:*", count=100)
-            if keys:
-                client.delete(*keys)
-            if cursor == 0:
-                break
+        set_key = f"t:{tenant_id}:keys"
+        keys = client.smembers(set_key)
+        if keys:
+            client.delete(*keys)
+        client.delete(set_key)
         logger.info(f"Cache invalidated for tenant {tenant_id}")
     except Exception as exc:
         logger.warning(f"Cache invalidation failed for tenant {tenant_id}: {exc}")
@@ -189,20 +208,17 @@ def scheduled_refresh_all_tenants() -> dict:
 
     Triggered by Celery Beat on a configurable schedule.
     """
-    import redis
-
     settings = load_settings()
     database_url = settings.database_url
 
     active_tenants = _get_active_tenants(database_url)
     results = []
+    redis_client = _get_task_redis_client()
 
     for tenant_id in active_tenants:
-        # Check if scheduled refresh is enabled for this tenant
-        if settings.redis_url:
+        if redis_client is not None:
             try:
-                client = redis.from_url(settings.redis_url, decode_responses=True)
-                val = client.get(f"scheduled_refresh:{tenant_id}")
+                val = redis_client.get(f"scheduled_refresh:{tenant_id}")
                 if val == "0":
                     results.append({
                         "tenant_id": tenant_id,

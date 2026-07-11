@@ -31,6 +31,7 @@ export default async function LoginPage({
 
   const params = await searchParams;
   const hasError = params.error === "invalid_credentials";
+  const hasServiceError = params.error === "service_unavailable";
 
   const [logoText, footerText, brandColor] = await Promise.all([
     fetchPublicSetting("logo_text", "iSN"),
@@ -97,7 +98,7 @@ export default async function LoginPage({
             </p>
           </div>
 
-          <LoginForm initialError={hasError ? "error" : undefined} callbackUrl={params.callbackUrl} />
+          <LoginForm initialError={hasError ? "error" : hasServiceError ? "service_error" : undefined} callbackUrl={params.callbackUrl} />
         </div>
       </div>
     </div>

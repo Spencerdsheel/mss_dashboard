@@ -1,20 +1,22 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   ColumnDef,
-  ColumnFiltersState,
-  SortingState,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
-  PaginationState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Image as ImageIcon, Search } from "lucide-react";
+import {
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Search,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,35 +26,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatDate } from "@/lib/utils";
-import { cn } from "@/lib/utils";
-import { rowsExcluding as cascadeRows, cascadingOptions } from "@/lib/cascading-filters";
+import { formatDate, cn } from "@/lib/utils";
+import type { VisitFilters } from "@/server/providers/rest-api-provider";
 
 // P1.4: Success values now come from campaign config in DB, not hardcoded constants.
 // The table shows raw install values without success highlighting.
 
-export type VisitRow = {
-  id: string;
-  surveyId: string;
-  storeId: string;
-  storeName: string;
+export type VisitItem = {
+  instance_id: string;
+  store_id: string;
+  store_name: string;
+  visit_date: string;
   city: string | null;
   address: string | null;
-  visitDate: string;
-  clerkName: string | null;
+  clerk_name: string | null;
   install1: string | null;
   install2: string | null;
   install3: string | null;
-  photoCount: number;
+  overall_notes: string | null;
+  photo_count: number;
+};
+
+type FilterOptions = {
+  cities: string[];
+  install1_values: string[];
+  install2_values: string[];
+  install3_values: string[];
 };
 
 type Props = {
   projectId: string;
-  rows: VisitRow[];
-  cities: string[];
-  install1Values: string[];
-  install2Values: string[];
-  install3Values: string[];
+  items: VisitItem[];
+  totalCount: number;
+  nextCursor: string | null;
+  prevCursor: string | null;
+  filterOptions: FilterOptions;
+  currentSort: string;
+  currentDir: string;
+  currentSearch: string;
+  currentFilters: VisitFilters;
+  currentLimit: number;
 };
 
 function statusBadge(value: string | null) {
@@ -79,148 +92,166 @@ function statusBadge(value: string | null) {
 
 export function VisitsTable({
   projectId,
-  rows,
+  items,
+  totalCount,
+  nextCursor,
+  prevCursor,
+  filterOptions,
+  currentSort,
+  currentDir,
+  currentSearch,
+  currentFilters,
+  currentLimit,
 }: Props) {
   const router = useRouter();
-  const [globalSearch, setGlobalSearch] = useState("");
-  const deferredSearch = useDeferredValue(globalSearch);
-  const [sorting, setSorting] = useState<SortingState>([{ id: "visitDate", desc: false }]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [city, setCity] = useState<string>("__all__");
-  const [i1, setI1] = useState<string>("__all__");
-  const [i2, setI2] = useState<string>("__all__");
-  const [i3, setI3] = useState<string>("__all__");
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 25,
-  });
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
-  // Cascading option lists: each dimension's options come from rows filtered by
-  // all OTHER active selections. The currently-selected value is always included
-  // so the user can always deselect even if other filters would exclude it.
-  // Logic lives in @/lib/cascading-filters so it can be unit-tested.
-  const filters = { city, i1, i2, i3 };
-  const cascadingCities = useMemo(
-    () => cascadingOptions(cascadeRows(rows, filters, "city"), "city", city),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, city, i1, i2, i3]
-  );
-  const cascadingI1 = useMemo(
-    () => cascadingOptions(cascadeRows(rows, filters, "i1"), "install1", i1),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, city, i1, i2, i3]
-  );
-  const cascadingI2 = useMemo(
-    () => cascadingOptions(cascadeRows(rows, filters, "i2"), "install2", i2),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, city, i1, i2, i3]
-  );
-  const cascadingI3 = useMemo(
-    () => cascadingOptions(cascadeRows(rows, filters, "i3"), "install3", i3),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, city, i1, i2, i3]
+  const [searchInput, setSearchInput] = useState(currentSearch);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setSearchInput(currentSearch);
+  }, [currentSearch]);
+
+  const updateParams = useCallback(
+    (updates: Record<string, string | undefined>, opts: { resetCursor?: boolean } = {}) => {
+      const { resetCursor = true } = opts;
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === undefined || value === "" || value === "__all__") {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      }
+      if (resetCursor && !("cursor" in updates)) {
+        params.delete("cursor");
+      }
+      startTransition(() => {
+        router.push(`${pathname}?${params.toString()}`);
+      });
+    },
+    [pathname, router, searchParams]
   );
 
-  const columns = useMemo<ColumnDef<VisitRow>[]>(
-    () => [
-      {
-        accessorKey: "visitDate",
-        header: ({ column }) => <SortButton column={column} label="Date" />,
-        cell: ({ row }) => (
-          <span className="tabular-nums text-muted-foreground">{formatDate(row.original.visitDate)}</span>
-        ),
-        sortingFn: "datetime",
-      },
-      {
-        accessorKey: "storeName",
-        header: ({ column }) => <SortButton column={column} label="Store" />,
-        cell: ({ row }) => (
-          <div>
-            <div className="font-medium text-foreground">{row.original.storeName}</div>
-            <div className="text-xs text-muted-foreground">
-              {row.original.storeId}
-              {row.original.address ? ` · ${row.original.address}` : ""}
-            </div>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "city",
-        header: ({ column }) => <SortButton column={column} label="City" />,
-        cell: ({ row }) => (
-          <span className="text-muted-foreground">{row.original.city || "—"}</span>
-        ),
-        filterFn: "equals",
-      },
-      {
-        accessorKey: "install1",
-        header: "Install 1",
-        cell: ({ row }) => statusBadge(row.original.install1),
-        filterFn: "equals",
-      },
-      {
-        accessorKey: "install2",
-        header: "Install 2",
-        cell: ({ row }) => statusBadge(row.original.install2),
-        filterFn: "equals",
-      },
-      {
-        accessorKey: "install3",
-        header: "Install 3",
-        cell: ({ row }) => statusBadge(row.original.install3),
-        filterFn: "equals",
-      },
-      {
-        accessorKey: "photoCount",
-        header: ({ column }) => <SortButton column={column} label="Photos" />,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="tabular-nums">{row.original.photoCount}</span>
-          </div>
-        ),
-      },
-    ],
-    []
+  useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    if (searchInput === currentSearch) return;
+    searchTimeout.current = setTimeout(() => {
+      updateParams({ search: searchInput || undefined });
+    }, 300);
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  const handleSort = useCallback(
+    (sortKey: string) => {
+      const nextDir = currentSort === sortKey && currentDir === "desc" ? "asc" : "desc";
+      updateParams({ sort: sortKey, dir: nextDir });
+    },
+    [currentSort, currentDir, updateParams]
   );
+
+  const handleFilterChange = useCallback(
+    (key: string, value: string) => {
+      updateParams({ [key]: value === "__all__" ? undefined : value });
+    },
+    [updateParams]
+  );
+
+  const handleNextPage = useCallback(() => {
+    if (!nextCursor) return;
+    updateParams({ cursor: nextCursor }, { resetCursor: false });
+  }, [nextCursor, updateParams]);
+
+  const handlePrevPage = useCallback(() => {
+    if (!prevCursor) return;
+    updateParams({ cursor: prevCursor }, { resetCursor: false });
+  }, [prevCursor, updateParams]);
+
+  const handleLimitChange = useCallback(
+    (value: string) => {
+      updateParams({ limit: value });
+    },
+    [updateParams]
+  );
+
+  const handleReset = useCallback(() => {
+    startTransition(() => {
+      router.push(pathname);
+    });
+    setSearchInput("");
+  }, [pathname, router]);
+
+  const columns: ColumnDef<VisitItem>[] = [
+    {
+      id: "visit_date",
+      accessorKey: "visit_date",
+      header: () => <SortHeader sortKey="visit_date" label="Date" currentSort={currentSort} currentDir={currentDir} onSort={handleSort} />,
+      cell: ({ row }) => (
+        <span className="tabular-nums text-muted-foreground">{formatDate(row.original.visit_date)}</span>
+      ),
+    },
+    {
+      id: "store_name",
+      accessorKey: "store_name",
+      header: "Store",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium text-foreground">{row.original.store_name}</div>
+          <div className="text-xs text-muted-foreground">
+            {row.original.store_id}
+            {row.original.address ? ` · ${row.original.address}` : ""}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "city",
+      accessorKey: "city",
+      header: "City",
+      cell: ({ row }) => <span className="text-muted-foreground">{row.original.city || "—"}</span>,
+    },
+    {
+      id: "install1",
+      accessorKey: "install1",
+      header: "Install 1",
+      cell: ({ row }) => statusBadge(row.original.install1),
+    },
+    {
+      id: "install2",
+      accessorKey: "install2",
+      header: "Install 2",
+      cell: ({ row }) => statusBadge(row.original.install2),
+    },
+    {
+      id: "install3",
+      accessorKey: "install3",
+      header: "Install 3",
+      cell: ({ row }) => statusBadge(row.original.install3),
+    },
+    {
+      id: "photo_count",
+      accessorKey: "photo_count",
+      header: "Photos",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="tabular-nums">{row.original.photo_count}</span>
+        </div>
+      ),
+    },
+  ];
 
   const table = useReactTable({
-    data: rows,
+    data: items,
     columns,
-    state: { sorting, columnFilters, globalFilter: deferredSearch, pagination },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalSearch,
-    onPaginationChange: setPagination,
-    globalFilterFn: (row, _col, value) => {
-      const v = String(value).toLowerCase();
-      if (!v) return true;
-      const r = row.original;
-      return (
-        r.storeName.toLowerCase().includes(v) ||
-        r.storeId.toLowerCase().includes(v) ||
-        (r.city ?? "").toLowerCase().includes(v) ||
-        r.surveyId.includes(v) ||
-        (r.address ?? "").toLowerCase().includes(v)
-      );
-    },
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   });
-
-  function applyFilter(id: string, value: string) {
-    const next =
-      value === "__all__"
-        ? table.getState().columnFilters.filter((f) => f.id !== id)
-        : [
-            ...table.getState().columnFilters.filter((f) => f.id !== id),
-            { id, value },
-          ];
-    setColumnFilters(next);
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }
 
   return (
     <div className="space-y-4">
@@ -229,43 +260,55 @@ export function VisitsTable({
         <div className="relative min-w-[260px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            value={globalSearch}
-            onChange={(e) => setGlobalSearch(e.target.value)}
-            placeholder="Search by store, city, survey ID…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search by store name…"
             className="rounded-lg border-border pl-9 text-sm placeholder:text-muted-foreground focus:ring-primary"
           />
-          {globalSearch !== deferredSearch && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-              Filtering…
-            </span>
-          )}
         </div>
 
-        <FilterSelect label="City" value={city} options={cascadingCities} onChange={(v) => { setCity(v); applyFilter("city", v); }} />
-        <FilterSelect label="Standee Messi" value={i1} options={cascadingI1} onChange={(v) => { setI1(v); applyFilter("install1", v); }} />
-        <FilterSelect label="Flying Fish" value={i2} options={cascadingI2} onChange={(v) => { setI2(v); applyFilter("install2", v); }} />
-        <FilterSelect label="Stock" value={i3} options={cascadingI3} onChange={(v) => { setI3(v); applyFilter("install3", v); }} />
+        <FilterSelect
+          label="City"
+          value={currentFilters.city ?? "__all__"}
+          options={filterOptions.cities}
+          onChange={(v) => handleFilterChange("city", v)}
+        />
+        <FilterSelect
+          label="Install 1"
+          value={currentFilters.install1 ?? "__all__"}
+          options={filterOptions.install1_values}
+          onChange={(v) => handleFilterChange("install1", v)}
+        />
+        <FilterSelect
+          label="Install 2"
+          value={currentFilters.install2 ?? "__all__"}
+          options={filterOptions.install2_values}
+          onChange={(v) => handleFilterChange("install2", v)}
+        />
+        <FilterSelect
+          label="Install 3"
+          value={currentFilters.install3 ?? "__all__"}
+          options={filterOptions.install3_values}
+          onChange={(v) => handleFilterChange("install3", v)}
+        />
 
         <Button
           variant="ghost"
           size="sm"
           className="rounded-pill text-muted-foreground hover:text-foreground"
-          onClick={() => {
-            setGlobalSearch("");
-            setCity("__all__");
-            setI1("__all__");
-            setI2("__all__");
-            setI3("__all__");
-            setColumnFilters([]);
-            setPagination({ pageIndex: 0, pageSize: 25 });
-          }}
+          onClick={handleReset}
         >
           Reset
         </Button>
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div
+        className={cn(
+          "overflow-hidden rounded-lg border border-border bg-card",
+          isPending && "opacity-50 pointer-events-none transition-opacity"
+        )}
+      >
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted">
             {table.getHeaderGroups().map((hg) => (
@@ -296,7 +339,7 @@ export function VisitsTable({
                   key={row.id}
                   onClick={() =>
                     router.push(
-                      `/dashboard/projects/${projectId}/visits/${row.original.surveyId}`
+                      `/dashboard/projects/${projectId}/visits/${row.original.instance_id}`
                     )
                   }
                   className="cursor-pointer border-t border-border transition-colors hover:bg-muted"
@@ -315,26 +358,36 @@ export function VisitsTable({
 
       {/* Pagination */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div>
-          {table.getFilteredRowModel().rows.length} of {rows.length} visits
+        <div className="flex items-center gap-3">
+          <span>
+            {totalCount.toLocaleString()} visit{totalCount === 1 ? "" : "s"}
+          </span>
+          {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          <Select value={String(currentLimit)} onValueChange={handleLimitChange}>
+            <SelectTrigger className="w-[100px] rounded-full border-border text-xs text-muted-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="25">25 / page</SelectItem>
+              <SelectItem value="50">50 / page</SelectItem>
+              <SelectItem value="100">100 / page</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={handlePrevPage}
+            disabled={!prevCursor || isPending}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="tabular-nums text-muted-foreground">
-            {table.getState().pagination.pageIndex + 1} / {table.getPageCount() || 1}
-          </span>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            onClick={handleNextPage}
+            disabled={!nextCursor || isPending}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -344,14 +397,33 @@ export function VisitsTable({
   );
 }
 
-function SortButton({ column, label }: { column: any; label: string }) {
+function SortHeader({
+  sortKey,
+  label,
+  currentSort,
+  currentDir,
+  onSort,
+}: {
+  sortKey: string;
+  label: string;
+  currentSort: string;
+  currentDir: string;
+  onSort: (key: string) => void;
+}) {
+  const isActive = currentSort === sortKey;
   return (
     <button
       className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      onClick={() => onSort(sortKey)}
     >
       {label}
-      <ArrowUpDown className="h-3 w-3" />
+      {isActive ? (
+        currentDir === "asc" ? (
+          <ArrowUp className="h-3 w-3" />
+        ) : (
+          <ArrowDown className="h-3 w-3" />
+        )
+      ) : null}
     </button>
   );
 }

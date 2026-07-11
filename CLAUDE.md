@@ -48,6 +48,28 @@ User               → manually tests, then commits. AGENTS NEVER COMMIT.
 - Small, self-contained changes may be done by **Sonnet/Haiku** directly.
 - `qwen_implementation_guide.md` (repo root) is the standing brief Qwen reads each sprint.
 
+## 3b. Operating discipline (how every model should work)
+
+Applies to **every** role — planner, implementer, verifier, fixer. Proven in practice here:
+audit re-verification against actual source caught 4 real issues the original audit missed.
+
+1. **Plan scope first.** Before touching files, state what is in scope, the order of work, and
+   what "done" looks like. Then execute the plan — don't dive in and discover scope as you go.
+2. **Verify, never trust.** A prior claim — a report, a comment, another agent's summary, your
+   own past output — is **checkable, not true**. Read the actual current source at the cited
+   file:line before repeating it or building on it.
+3. **One item, one check.** Multi-item work (N files, N findings, N docs) gets a real per-item
+   check. Never apply a batch assumption across items because the first few held.
+4. **Three-tier reporting.** Final reports separate: (a) **confirmed** by direct verification,
+   (b) **corrected** because verification found drift/error, (c) **judgment calls** made under
+   genuine ambiguity — and for each (c), state the assumption and why, so a human can catch it
+   if wrong.
+5. **Ask vs. decide.** Genuine ambiguity touching a §5 red-line area (security, tenant
+   isolation, secrets, data correctness) → stop and surface the question. Everything else →
+   make the reasonable call, flag it per rule 4, keep moving.
+6. **Finishing ≠ destructive.** Never let "wrapping up" trigger a hard-to-reverse action.
+   Red line §5.8 already governs git — respect it silently, don't reinterpret it.
+
 ## 4. Data-flow trace (memorize this path)
 
 ```

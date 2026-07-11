@@ -59,6 +59,34 @@ export type ProjectListItem = {
   visitCount?: number;
 };
 
+export type PaginatedVisitItem = {
+  instance_id: string;
+  store_id: string;
+  store_name: string;
+  visit_date: string;
+  city: string | null;
+  address: string | null;
+  clerk_name: string | null;
+  install1: string | null;
+  install2: string | null;
+  install3: string | null;
+  overall_notes: string | null;
+  photo_count: number;
+};
+
+export type PaginatedVisitsResult = {
+  items: PaginatedVisitItem[];
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  total_count: number;
+  filter_options: {
+    cities: string[];
+    install1_values: string[];
+    install2_values: string[];
+    install3_values: string[];
+  };
+};
+
 export interface DashboardDataProvider {
   /** Provider identifier (sample | shopmetrics | rest-api). */
   readonly kind: "sample" | "shopmetrics" | "rest-api";
@@ -69,8 +97,18 @@ export interface DashboardDataProvider {
   /** Seeded reference metrics (targets, denominators). */
   listProjectMetrics(): Promise<ProjectMetric[]>;
 
-  /** Canonical list of normalized visit rows. */
+  /** @deprecated Use listVisitsPaginated for paginated access. */
   listVisits(): Promise<NormalizedVisit[]>;
+
+  /** Paginated visit list with server-side sort/filter/search. */
+  listVisitsPaginated(params: {
+    cursor?: string;
+    limit?: number;
+    sort?: string;
+    dir?: "asc" | "desc";
+    search?: string;
+    filters?: Record<string, string | undefined>;
+  }): Promise<PaginatedVisitsResult>;
 
   /**
    * Single visit detail with photos populated.

@@ -223,6 +223,24 @@ CREATE INDEX IF NOT EXISTS dashboard_visits_project_city_idx
 CREATE INDEX IF NOT EXISTS dashboard_run_logs_tenant_started_idx
     ON dashboard.run_logs(tenant_id, started_at DESC);
 
+-- Sprint PERF Task 2.6: keyset pagination support.
+-- Full ordering key in one composite index (tenant, project, visit_date, survey_id)
+-- so the row-tuple comparison used by list_visits_page can be satisfied by a
+-- single index scan in either direction, with no separate Sort node.
+-- Note: dashboard_visits_project_date_idx above becomes redundant once this
+-- exists; left in place this sprint (dropping indexes is an operational
+-- decision — see .claude/specs/future-updates.md).
+CREATE INDEX IF NOT EXISTS dashboard_visits_project_date_survey_idx
+    ON dashboard.visits(tenant_id, project_id, visit_date, survey_id);
+
+-- Server-side ILIKE search on store_name for the paginated visits endpoint.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS dashboard_visits_store_name_trgm_idx
+    ON dashboard.visits USING gin (store_name gin_trgm_ops);
+
+-- Photo counts / anti-join support: leading columns of the visit_photos PK
+-- already cover (tenant_id, project_id, survey_id) — no new index needed.
+
 -- Groundwork: password-reset tokens
 -- Tokens are stored as PBKDF2-SHA256 hashes (never plaintext) and are
 -- single-use (consumed_at IS NOT NULL means used) with a hard expiry.

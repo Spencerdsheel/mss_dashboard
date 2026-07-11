@@ -8,11 +8,14 @@ from uuid import uuid4
 
 import asyncpg
 
+from .logging_config import get_logger
 from .models import AuthClaims, Company, DistributionEntry, InstallCategory, InstallSlot, Project, ProjectMetric, ProjectSummary, Role, RunLog, Tenant, User, Visit, VisitPhoto, resolve_role
-from .repository import DashboardRepository, seed_phase01_repository, to_client_visit_dict, to_public_dict
+from .repository import DashboardRepository, VisitFilters, seed_phase01_repository, to_client_visit_dict, to_public_dict
 from .secrets import encrypt_secret
 from .security import hash_password, hash_reset_token, verify_password, verify_reset_token, generate_reset_token
-from .tenancy import assert_project_access
+from .tenancy import assert_project_access, tenant_scope
+
+logger = get_logger(__name__)
 
 
 class PostgresDashboardRepository:
@@ -30,23 +33,37 @@ class PostgresDashboardRepository:
         max_size: int = 20,
         timeout: float = 30.0,
         read_replica_url: str | None = None,
+        via_pgbouncer: bool = False,
     ) -> None:
         self.database_url = database_url
         self.read_replica_url = read_replica_url
         self.min_size = min_size
         self.max_size = max_size
         self.timeout = timeout
+        self.via_pgbouncer = via_pgbouncer
         self.pool: asyncpg.Pool | None = None
         self.replica_pool: asyncpg.Pool | None = None
         self.auth_repository = auth_repository or seed_phase01_repository()
 
     async def initialize_pool(self) -> None:
-        """Create the connection pool. Call on application startup."""
+        """Create the connection pool. Call on application startup.
+
+        When `via_pgbouncer` is set, `statement_cache_size=0` disables asyncpg's
+        automatic prepared-statement cache — required for correctness under
+        PgBouncer transaction pooling, where a prepared statement created on
+        one physical connection may be reused on a different one across
+        transactions.
+        """
+        pool_kwargs: dict[str, Any] = {}
+        if self.via_pgbouncer:
+            pool_kwargs["statement_cache_size"] = 0
+
         self.pool = await asyncpg.create_pool(
             dsn=self.database_url,
             min_size=self.min_size,
             max_size=self.max_size,
             timeout=self.timeout,
+            **pool_kwargs,
         )
         if self.read_replica_url:
             try:
@@ -55,6 +72,7 @@ class PostgresDashboardRepository:
                     min_size=self.min_size,
                     max_size=self.max_size,
                     timeout=self.timeout,
+                    **pool_kwargs,
                 )
             except Exception:
                 self.replica_pool = None
@@ -151,13 +169,13 @@ class PostgresDashboardRepository:
                 """
                 SELECT p.tenant_id, p.project_id, p.name, p.slug, p.client_name,
                        p.provider_kind, p.start_date, p.end_date,
-                       COALESCE((
-                           SELECT COUNT(*)
-                           FROM dashboard.visits v
-                           WHERE v.tenant_id = p.tenant_id
-                             AND v.project_id = p.project_id
-                       ), 0) AS visit_count
+                       COALESCE(vc.visit_count, 0) AS visit_count
                 FROM dashboard.projects p
+                LEFT JOIN (
+                    SELECT tenant_id, project_id, COUNT(*) AS visit_count
+                    FROM dashboard.visits
+                    GROUP BY tenant_id, project_id
+                ) vc ON vc.tenant_id = p.tenant_id AND vc.project_id = p.project_id
                 ORDER BY p.name ASC
                 """
             )
@@ -168,13 +186,14 @@ class PostgresDashboardRepository:
                 """
                 SELECT p.tenant_id, p.project_id, p.name, p.slug, p.client_name,
                        p.provider_kind, p.start_date, p.end_date,
-                       COALESCE((
-                           SELECT COUNT(*)
-                           FROM dashboard.visits v
-                           WHERE v.tenant_id = p.tenant_id
-                             AND v.project_id = p.project_id
-                       ), 0) AS visit_count
+                       COALESCE(vc.visit_count, 0) AS visit_count
                 FROM dashboard.projects p
+                LEFT JOIN (
+                    SELECT tenant_id, project_id, COUNT(*) AS visit_count
+                    FROM dashboard.visits
+                    WHERE tenant_id = ANY($1)
+                    GROUP BY tenant_id, project_id
+                ) vc ON vc.tenant_id = p.tenant_id AND vc.project_id = p.project_id
                 WHERE p.tenant_id = ANY($1)
                 ORDER BY p.name ASC
                 """,
@@ -187,13 +206,14 @@ class PostgresDashboardRepository:
                 """
                 SELECT p.tenant_id, p.project_id, p.name, p.slug, p.client_name,
                        p.provider_kind, p.start_date, p.end_date,
-                       COALESCE((
-                           SELECT COUNT(*)
-                           FROM dashboard.visits v
-                           WHERE v.tenant_id = p.tenant_id
-                             AND v.project_id = p.project_id
-                       ), 0) AS visit_count
+                       COALESCE(vc.visit_count, 0) AS visit_count
                 FROM dashboard.projects p
+                LEFT JOIN (
+                    SELECT tenant_id, project_id, COUNT(*) AS visit_count
+                    FROM dashboard.visits
+                    WHERE tenant_id = $1
+                    GROUP BY tenant_id, project_id
+                ) vc ON vc.tenant_id = p.tenant_id AND vc.project_id = p.project_id
                 WHERE p.tenant_id = $1 AND p.project_id = ANY($2)
                 ORDER BY p.name ASC
                 """,
@@ -202,22 +222,50 @@ class PostgresDashboardRepository:
             )
         return [project_from_row(row) for row in rows]
 
-    async def get_project(self, project_id: str) -> Project | None:
-        row = await self._fetch_one(
-            """
-            SELECT tenant_id, project_id, name, slug, client_name,
-                   provider_kind, start_date, end_date
-            FROM dashboard.projects
-            WHERE project_id = $1
-            ORDER BY tenant_id ASC
-            LIMIT 1
-            """,
-            project_id,
-        )
+    async def get_project(self, project_id: str, tenant_ids: list[str] | None) -> Project | None:
+        """Resolve a project scoped to the caller's tenants.
+
+        tenant_ids semantics:
+          - None  -> PLATFORM_ADMIN: no tenant filter (cross-tenant lookup allowed).
+          - list  -> filter WHERE tenant_id = ANY($1). Empty list => always None.
+
+        This fixes the composite-key bug where a bare `project_id` lookup would
+        resolve to whichever tenant's row happened to sort first, silently
+        leaking one tenant's project into another tenant's request when two
+        tenants share a project_id.
+        """
+        if tenant_ids is not None and not tenant_ids:
+            return None
+        if tenant_ids is None:
+            row = await self._fetch_one(
+                """
+                SELECT tenant_id, project_id, name, slug, client_name,
+                       provider_kind, start_date, end_date
+                FROM dashboard.projects
+                WHERE project_id = $1
+                ORDER BY tenant_id ASC
+                LIMIT 1
+                """,
+                project_id,
+            )
+        else:
+            row = await self._fetch_one(
+                """
+                SELECT tenant_id, project_id, name, slug, client_name,
+                       provider_kind, start_date, end_date
+                FROM dashboard.projects
+                WHERE tenant_id = ANY($1) AND project_id = $2
+                LIMIT 1
+                """,
+                list(tenant_ids),
+                project_id,
+            )
         return project_from_row(row) if row else None
 
     async def get_project_summary(self, claims: AuthClaims, project_id: str) -> ProjectSummary:
-        project = assert_project_access(claims, await self.get_project(project_id))
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
 
         summary_row = await self._fetch_one_replica(
             """
@@ -239,16 +287,17 @@ class PostgresDashboardRepository:
                 WHERE tenant_id = $1 AND project_id = $2
                 GROUP BY kind
             ),
+            distinct_photo_surveys AS (
+                SELECT DISTINCT survey_id
+                FROM dashboard.visit_photos
+                WHERE tenant_id = $1 AND project_id = $2
+            ),
             rows_without_photos AS (
                 SELECT COUNT(*) as cnt
                 FROM dashboard.visits v
-                WHERE tenant_id = $1 AND project_id = $2
-                AND NOT EXISTS (
-                    SELECT 1 FROM dashboard.visit_photos vp
-                    WHERE vp.tenant_id = v.tenant_id
-                    AND vp.project_id = v.project_id
-                    AND vp.survey_id = v.survey_id
-                )
+                LEFT JOIN distinct_photo_surveys dps ON dps.survey_id = v.survey_id
+                WHERE v.tenant_id = $1 AND v.project_id = $2
+                  AND dps.survey_id IS NULL
             )
             SELECT
                 vs.total_visits, vs.unique_stores, vs.min_date, vs.max_date,
@@ -301,34 +350,48 @@ class PostgresDashboardRepository:
             si = int(cat_row["slot_index"])
             success_map.setdefault(si, {})[str(cat_row["label"])] = bool(cat_row["is_success"])
 
-        # P1.4: Compute per-slot distributions and success counts
+        # P1.4: Compute per-slot distributions and success counts.
+        # Task 2.3: one UNION ALL query instead of one query per install slot
+        # (previously up to 4 round-trips with dynamic f-string column names).
+        # The column list is a fixed literal whitelist — never derived from
+        # user input — so this stays a static, parameterized query.
         install_slots: list[InstallSlot] = []
-        install_columns = ["install1", "install2", "install3", "install4"]
+
+        dist_rows_all = await self._fetch_all_replica(
+            """
+            SELECT 1 AS slot_index, install1 AS answer, COUNT(*) AS cnt
+            FROM dashboard.visits
+            WHERE tenant_id = $1 AND project_id = $2 AND install1 IS NOT NULL
+            GROUP BY install1
+            UNION ALL
+            SELECT 2, install2, COUNT(*) FROM dashboard.visits
+            WHERE tenant_id = $1 AND project_id = $2 AND install2 IS NOT NULL GROUP BY install2
+            UNION ALL
+            SELECT 3, install3, COUNT(*) FROM dashboard.visits
+            WHERE tenant_id = $1 AND project_id = $2 AND install3 IS NOT NULL GROUP BY install3
+            UNION ALL
+            SELECT 4, install4, COUNT(*) FROM dashboard.visits
+            WHERE tenant_id = $1 AND project_id = $2 AND install4 IS NOT NULL GROUP BY install4
+            ORDER BY slot_index ASC, cnt DESC
+            """,
+            project.tenant_id,
+            project.id,
+        )
+
+        dist_map: dict[int, list[asyncpg.Record]] = {}
+        for drow in dist_rows_all:
+            dist_map.setdefault(int(drow["slot_index"]), []).append(drow)
 
         for slot_row in slot_rows:
             si = int(slot_row["slot_index"])
-            col = install_columns[si - 1] if si <= 4 else None
-            if not col:
+            if si > 4:
                 continue
-
-            # Query distribution for this install column
-            dist_rows = await self._fetch_all_replica(
-                f"""
-                SELECT {col} as answer, COUNT(*) as cnt
-                FROM dashboard.visits
-                WHERE tenant_id = $1 AND project_id = $2 AND {col} IS NOT NULL
-                GROUP BY {col}
-                ORDER BY cnt DESC
-                """,
-                project.tenant_id,
-                project.id,
-            )
 
             distribution: list[DistributionEntry] = []
             success_count = 0
             slot_success = success_map.get(si, {})
 
-            for drow in dist_rows:
+            for drow in dist_map.get(si, []):
                 label = str(drow["answer"]) if drow["answer"] else "Unknown"
                 count = int(drow["cnt"])
                 is_success = slot_success.get(label, False)
@@ -367,8 +430,15 @@ class PostgresDashboardRepository:
         )
 
     async def list_visits(self, claims: AuthClaims, project_id: str) -> list[dict]:
-        """List visits with photo_count computed."""
-        project = assert_project_access(claims, await self.get_project(project_id))
+        """List visits with photo_count computed.
+
+        Legacy un-paginated path — kept for one sprint while the frontend
+        still does client-side paging. Hard-capped at 5000 rows so a large
+        project can never return an unbounded response.
+        """
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
 
         # Single query with photo count via LEFT JOIN
         rows = await self._fetch_all_replica(
@@ -383,10 +453,18 @@ class PostgresDashboardRepository:
             ) pc ON v.survey_id = pc.survey_id
             WHERE v.tenant_id = $1 AND v.project_id = $2
             ORDER BY v.visit_date ASC, v.survey_id ASC
+            LIMIT 5000
             """,
             project.tenant_id,
             project.id,
         )
+
+        if len(rows) >= 5000:
+            logger.warning(
+                "list_visits hit the 5000-row legacy cap for project %s (tenant %s)",
+                project.id,
+                project.tenant_id,
+            )
 
         result = []
         for row in rows:
@@ -398,8 +476,155 @@ class PostgresDashboardRepository:
             result.append(visit_dict)
         return result
 
+    async def list_visits_page(
+        self,
+        claims: AuthClaims,
+        project_id: str,
+        *,
+        cursor: dict | None,
+        limit: int,
+        direction: str,
+        search: str | None,
+        filters: VisitFilters | None,
+    ) -> tuple[list[dict], int, dict]:
+        """Keyset-paginated visit listing (Task 2.1).
+
+        Ordering is always the composite key (visit_date, survey_id); `direction`
+        controls asc/desc. `cursor` (already decoded by the route layer) may carry
+        o="next" or o="prev" to walk forward/backward from a known row. All
+        predicates are parameterized — no user value is ever interpolated into SQL.
+        """
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
+
+        where_parts: list[str] = ["v.tenant_id = $1", "v.project_id = $2"]
+        args: list[Any] = [project.tenant_id, project.id]
+
+        if search:
+            args.append(f"%{search}%")
+            where_parts.append(f"v.store_name ILIKE ${len(args)}")
+
+        if filters is not None:
+            for col in ("install1", "install2", "install3", "install4", "city"):
+                values = getattr(filters, col)
+                if values:
+                    args.append(list(values))
+                    where_parts.append(f"v.{col} = ANY(${len(args)})")
+            if filters.date_from is not None:
+                args.append(filters.date_from)
+                where_parts.append(f"v.visit_date >= ${len(args)}")
+            if filters.date_to is not None:
+                args.append(filters.date_to)
+                where_parts.append(f"v.visit_date <= ${len(args)}")
+
+        base_where = " AND ".join(where_parts)
+
+        # Determine effective scan order + comparison operator for the keyset
+        # predicate. dir=desc + o=next -> strictly earlier rows (< cursor) in
+        # descending scan order; dir=desc + o=prev -> flip to ascending scan
+        # (rows after the cursor), then reverse in Python so results are
+        # always returned in the user-facing order.
+        user_desc = direction == "desc"
+        page_args = list(args)
+        page_where_parts = list(where_parts)
+        scan_desc = user_desc
+
+        if cursor is not None:
+            op = None
+            if cursor["o"] == "next":
+                scan_desc = user_desc
+                op = "<" if user_desc else ">"
+            else:  # prev
+                scan_desc = not user_desc
+                op = ">" if user_desc else "<"
+            page_args.append(cursor["d"])
+            page_args.append(cursor["s"])
+            d_idx = len(page_args) - 1
+            s_idx = len(page_args)
+            page_where_parts.append(f"(v.visit_date, v.survey_id) {op} (${d_idx}, ${s_idx})")
+
+        page_where = " AND ".join(page_where_parts)
+        order_dir = "DESC" if scan_desc else "ASC"
+        page_args.append(limit + 1)
+        limit_idx = len(page_args)
+
+        page_rows = await self._fetch_all_replica(
+            f"""
+            WITH page AS (
+                SELECT v.* FROM dashboard.visits v
+                WHERE {page_where}
+                ORDER BY v.visit_date {order_dir}, v.survey_id {order_dir}
+                LIMIT ${limit_idx}
+            )
+            SELECT page.*, COALESCE(pc.photo_count, 0) AS photo_count
+            FROM page
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS photo_count
+                FROM dashboard.visit_photos vp
+                WHERE vp.tenant_id = page.tenant_id
+                  AND vp.project_id = page.project_id
+                  AND vp.survey_id = page.survey_id
+            ) pc ON true
+            ORDER BY page.visit_date {order_dir}, page.survey_id {order_dir}
+            """,
+            *page_args,
+        )
+
+        has_more = len(page_rows) > limit
+        rows = list(page_rows[:limit])
+
+        # If this was a "prev" fetch, the scan ran in the opposite order —
+        # flip back to the user-facing order before returning.
+        if cursor is not None and cursor["o"] == "prev":
+            rows.reverse()
+
+        count_row = await self._fetch_one_replica(
+            f"SELECT COUNT(*) AS cnt FROM dashboard.visits v WHERE {base_where}",
+            *args,
+        )
+        total_count = int(count_row["cnt"]) if count_row else 0
+
+        filter_sql = f"""
+            SELECT
+                COALESCE(array_agg(DISTINCT v.city) FILTER (WHERE v.city IS NOT NULL), ARRAY[]::text[]) AS cities,
+                COALESCE(array_agg(DISTINCT v.install1) FILTER (WHERE v.install1 IS NOT NULL), ARRAY[]::text[]) AS install1_values,
+                COALESCE(array_agg(DISTINCT v.install2) FILTER (WHERE v.install2 IS NOT NULL), ARRAY[]::text[]) AS install2_values,
+                COALESCE(array_agg(DISTINCT v.install3) FILTER (WHERE v.install3 IS NOT NULL), ARRAY[]::text[]) AS install3_values
+            FROM dashboard.visits v
+            WHERE {base_where}
+        """
+        filter_row = await self._fetch_one_replica(filter_sql, *args)
+        filter_options = {
+            "cities": sorted(filter_row["cities"]) if filter_row else [],
+            "install1_values": sorted(filter_row["install1_values"]) if filter_row else [],
+            "install2_values": sorted(filter_row["install2_values"]) if filter_row else [],
+            "install3_values": sorted(filter_row["install3_values"]) if filter_row else [],
+        }
+
+        result: list[dict] = []
+        for row in rows:
+            visit = visit_from_row(row)
+            visit_dict = to_client_visit_dict(visit)
+            visit_dict["photo_count"] = int(row["photo_count"])
+            result.append(visit_dict)
+
+        # Stash raw keyset values (pre-strip) so the route layer can build
+        # next/prev cursors without re-deriving them from the stripped dicts.
+        # `_keyset_has_more` tells the route whether the peeked (limit+1)-th
+        # row existed, i.e. whether a next page is available — the returned
+        # `result` list itself is always trimmed to `limit` items.
+        for visit_dict, row in zip(result, rows):
+            visit_dict["_keyset_visit_date"] = iso_date(row["visit_date"]) or str(row["visit_date"])
+            visit_dict["_keyset_survey_id"] = str(row["survey_id"])
+            visit_dict["_keyset_has_more"] = has_more
+
+        return result, total_count, filter_options
+
     async def get_visit(self, claims: AuthClaims, project_id: str, instance_id: str) -> Visit | None:
-        project = assert_project_access(claims, await self.get_project(project_id))
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
         row = await self._fetch_one_replica(
             """
             SELECT *
@@ -413,7 +638,9 @@ class PostgresDashboardRepository:
         return visit_from_row(row) if row else None
 
     async def list_photos(self, claims: AuthClaims, project_id: str, instance_id: str) -> list[VisitPhoto]:
-        project = assert_project_access(claims, await self.get_project(project_id))
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
         rows = await self._fetch_all_replica(
             """
             SELECT tenant_id, project_id, survey_id, kind, url, caption
@@ -812,7 +1039,10 @@ class PostgresDashboardRepository:
         return dict(row)
 
     async def list_photo_slot_labels(self, project_id: str) -> list[dict]:
-        project = await self.get_project(project_id)
+        # Admin-only path: no AuthClaims arg here — the route guard
+        # (_assert_company_access_to_project) already ran, so an unrestricted
+        # lookup is safe.
+        project = await self.get_project(project_id, tenant_ids=None)
         if not project:
             raise ValueError("Project not found")
         rows = await self._fetch_all_replica(
@@ -828,7 +1058,8 @@ class PostgresDashboardRepository:
         return [dict(row) for row in rows]
 
     async def update_photo_slot_labels(self, project_id: str, labels: list[dict[str, str]]) -> list[dict]:
-        project = await self.get_project(project_id)
+        # Admin-only path: route guard already ran; unrestricted lookup is safe.
+        project = await self.get_project(project_id, tenant_ids=None)
         if not project:
             raise ValueError("Project not found")
         for item in labels:
@@ -849,7 +1080,8 @@ class PostgresDashboardRepository:
         return await self.list_photo_slot_labels(project_id)
 
     async def list_project_metrics(self, project_id: str) -> list[dict]:
-        project = await self.get_project(project_id)
+        # Admin-only path: route guard already ran; unrestricted lookup is safe.
+        project = await self.get_project(project_id, tenant_ids=None)
         if not project:
             raise ValueError("Project not found")
         rows = await self._fetch_all_replica(
@@ -865,7 +1097,8 @@ class PostgresDashboardRepository:
         return [dict(row) for row in rows]
 
     async def update_project_metrics(self, project_id: str, metrics: list[dict]) -> list[dict]:
-        project = await self.get_project(project_id)
+        # Admin-only path: route guard already ran; unrestricted lookup is safe.
+        project = await self.get_project(project_id, tenant_ids=None)
         if not project:
             raise ValueError("Project not found")
         for item in metrics:
@@ -1022,18 +1255,23 @@ class PostgresDashboardRepository:
         new_hash = hash_password(new_password)
 
         # Atomically consume the token and update the password.
+        # The WHERE includes consumed_at IS NULL to prevent TOCTOU:
+        # two concurrent redeems race on the same token_id, but only
+        # the first UPDATE matches — the second sees 0 rows and aborts.
         if self.pool is None:
             raise RuntimeError("Connection pool not initialized. Call initialize_pool() first.")
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                await conn.execute(
+                result = await conn.execute(
                     """
                     UPDATE dashboard.password_reset_tokens
                     SET consumed_at = now()
-                    WHERE token_id = $1
+                    WHERE token_id = $1 AND consumed_at IS NULL
                     """,
                     matched_token_id,
                 )
+                if result == "UPDATE 0":
+                    return False
                 await conn.execute(
                     """
                     UPDATE dashboard.users

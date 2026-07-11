@@ -14,11 +14,16 @@ export default async function ProjectOverviewPage({
   const { session } = await assertProjectAccess(projectId);
   const token = session.user.accessToken;
 
-  const summary = await getProjectSummary(projectId, token);
   const provider = getDashboardProvider("rest-api", token, projectId);
-  await provider.describeProject();
 
-  const rawVisits = await provider.listVisits();
+  // Summary + visits in parallel (listVisits still needed for charts). This
+  // also removes the previous describeProject() call, which duplicated
+  // getProjectSummary (both hit the same /summary endpoint).
+  const [summary, rawVisits] = await Promise.all([
+    getProjectSummary(projectId, token),
+    provider.listVisits(),
+  ]);
+
   const visitRows = rawVisits.map((v) => ({
     visitDate: v.visitDate.toISOString(),
     city: v.city,

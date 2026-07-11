@@ -38,7 +38,10 @@ class RedisRateLimiter:
             )
 
         self.redis_url = redis_url or "redis://localhost:6380/0"
-        self.client = redis.from_url(self.redis_url, decode_responses=True)
+        self.client = redis.from_url(
+            self.redis_url, decode_responses=True,
+            socket_connect_timeout=2, socket_timeout=2,
+        )
         self.client.ping()
         # Fallback is only used for the non-critical global limiter path.
         self._global_fallback = InMemoryRateLimiter()

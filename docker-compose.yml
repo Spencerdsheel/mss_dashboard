@@ -28,6 +28,44 @@ services:
       timeout: 5s
       retries: 5
 
+  # PgBouncer: transaction-pooling connection multiplexer in front of Postgres.
+  # Sizing: several uvicorn workers x small asyncpg pools (see settings.py
+  # db_pool_min_size/db_pool_max_size) + Celery workers all connect here
+  # instead of directly to Postgres. PgBouncer multiplexes those onto at most
+  # MAX_DB_CONNECTIONS=90 real server connections, staying under Postgres's
+  # default max_connections=100.
+  #
+  # Transaction-pooling caveat: no session state survives across a pooled
+  # connection's transactions (no SET/LISTEN/advisory locks/named prepared
+  # statements). The app MUST connect with statement_cache_size=0 when
+  # pointed at PgBouncer (see PostgresDashboardRepository.initialize_pool,
+  # gated by DB_VIA_PGBOUNCER=1 / settings.db_via_pgbouncer).
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: mss_pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: admin
+      DB_NAME: shopmetrics_demo
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 400
+      DEFAULT_POOL_SIZE: 20
+      MAX_DB_CONNECTIONS: 90
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "5434:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7
     container_name: mss_redis

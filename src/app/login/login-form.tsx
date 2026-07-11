@@ -52,7 +52,9 @@ export function LoginForm({
       </div>
       {initialError && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          Invalid credentials.
+          {initialError === "service_error"
+            ? "Service temporarily unavailable. Please try again."
+            : "Invalid credentials."}
         </div>
       )}
       <Button className="w-full bg-[#ff682c] text-white hover:bg-[#ff682c]/90" disabled={isPending}>

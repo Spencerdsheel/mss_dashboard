@@ -79,10 +79,22 @@ def create_access_token(
     return encode_hs256(payload, settings.jwt_secret)
 
 
+_blacklist_clients: dict[str, redis.Redis] = {}
+
+
+def _get_blacklist_client(redis_url: str) -> redis.Redis:
+    """Return a shared Redis client for blacklist operations (one per URL)."""
+    client = _blacklist_clients.get(redis_url)
+    if client is None:
+        client = redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
+        _blacklist_clients[redis_url] = client
+    return client
+
+
 def blacklist_token(token: str, redis_url: str, jwt_secret: str, ttl_seconds: int | None = None) -> None:
     """Add a token to the Redis blacklist using its JTI claim."""
     try:
-        client = redis.from_url(redis_url)
+        client = _get_blacklist_client(redis_url)
         payload = decode_hs256(token, jwt_secret)
         jti = payload.get("jti")
         if not jti:
@@ -99,7 +111,7 @@ def blacklist_token(token: str, redis_url: str, jwt_secret: str, ttl_seconds: in
 def is_token_blacklisted(token: str, redis_url: str, jwt_secret: str) -> bool:
     """Check if a token's JTI is in the Redis blacklist."""
     try:
-        client = redis.from_url(redis_url)
+        client = _get_blacklist_client(redis_url)
         payload = decode_hs256(token, jwt_secret)
         jti = payload.get("jti")
         if not jti:

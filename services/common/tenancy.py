@@ -46,3 +46,18 @@ def assert_project_access(claims: AuthClaims, project: Project | None) -> Projec
     if not can_access_project(claims, project):
         raise AuthorizationError("Project not found or not accessible")
     return project
+
+
+def tenant_scope(claims: AuthClaims) -> list[str] | None:
+    """Allowed tenant_ids for project resolution.
+
+    None means unrestricted (PLATFORM_ADMIN — cross-tenant lookup allowed).
+    A list (possibly empty) scopes the lookup to those tenant_ids; an empty
+    list means the caller has no tenant access and must always resolve to
+    None.
+    """
+    if claims.role == Role.PLATFORM_ADMIN:
+        return None
+    if claims.role == Role.CLIENT_ADMIN:
+        return list(claims.tenant_ids)
+    return [claims.tenant_id] if claims.tenant_id else []
