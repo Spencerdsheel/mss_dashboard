@@ -140,6 +140,42 @@ async def project_summary(
     )
 
 
+@router.get("/projects/{project_id}/dashboard-layout/{page}")
+@router.get("/projects/{project_id}/dashboard-layout")
+async def get_dashboard_layout(
+    project_id: str,
+    page: str = "overview",
+    claims=Depends(get_current_claims),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    """Sprint 13a — read the project's stored widget-dashboard layout.
+
+    Available to all authenticated project-accessors (every role must be able
+    to render the dashboard) — only *writing* (13b) is admin-gated, in
+    admin.py. Thin handler: authorize, call the repository, shape the
+    response. `layout: null` means "no stored layout"; the frontend renders
+    DEFAULT_LAYOUT.
+    """
+    from services.common.layout_schema import ALLOWED_LAYOUT_PAGES
+    if page not in ALLOWED_LAYOUT_PAGES:
+        raise HTTPException(status_code=422, detail=f"Unknown dashboard page: {page!r}")
+    try:
+        project = assert_project_access(
+            claims, await repository.get_project(project_id, tenant_scope(claims))
+        )
+    except AuthorizationError as exc:
+        raise _not_found(exc) from exc
+
+    layout = await repository.get_dashboard_layout(claims, project.id, page)
+    if layout is None:
+        return {"layout": None, "source": None, "updated_at": None}
+    return {
+        "layout": layout.layout,
+        "source": layout.source,
+        "updated_at": layout.updated_at.isoformat() if layout.updated_at else None,
+    }
+
+
 @router.get("/projects/{project_id}/visits")
 async def list_visits(
     project_id: str,

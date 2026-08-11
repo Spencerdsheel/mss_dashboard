@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 
 import sentry_sdk
 from celery import Celery
+from celery.signals import worker_init
 from sentry_sdk.integrations.celery import CeleryIntegration
 
 from services.common.settings import load_settings
+from services.ingestion.migrate import run_migrations
 
 settings = load_settings()
+logger = logging.getLogger(__name__)
 
 if settings.environment == "production" and settings.sentry_dsn:
     sentry_sdk.init(
@@ -51,3 +55,11 @@ celery_app.conf.beat_schedule = {
 }
 
 celery_app.autodiscover_tasks(["services.ingestion"])
+
+
+@worker_init.connect
+def apply_migrations_on_worker_start(**_kwargs) -> None:
+    """Keep a Celery-only deployment from running against a stale schema."""
+    applied_migrations = run_migrations(settings.database_url)
+    if applied_migrations:
+        logger.info("Applied database migrations: %s", ", ".join(applied_migrations))

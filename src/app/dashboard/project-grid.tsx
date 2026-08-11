@@ -212,7 +212,7 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
               type="date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
-              className="w-44"
+              className="date-range-input w-44"
             />
           </div>
           <div className="space-y-1">
@@ -224,7 +224,7 @@ export function ProjectGrid({ projects }: ProjectGridProps) {
               type="date"
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
-              className="w-44"
+              className="date-range-input w-44"
             />
           </div>
         </div>

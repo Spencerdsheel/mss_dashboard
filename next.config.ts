@@ -23,6 +23,21 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      // Sprint 18 §4.1: "Geography" was renamed to "Locations" (route, nav,
+      // pill-nav). Redirect the old path so any bookmarked/shared link from
+      // before the rename still lands on the live page instead of 404ing.
+      // Plain path rewrite only — projectId flows through the dynamic
+      // segment as Next.js already resolves it; the destination page still
+      // runs assertProjectAccess exactly as before.
+      {
+        source: "/dashboard/projects/:projectId/geography",
+        destination: "/dashboard/projects/:projectId/locations",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

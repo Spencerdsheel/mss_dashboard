@@ -9,7 +9,6 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Tooltip,
-  Legend,
 } from "recharts";
 
 const TOOLTIP_STYLE = {
@@ -44,7 +43,7 @@ export const BannerRadarChart = memo(function BannerRadarChart({
     <div className="relative h-full w-full min-h-0">
       <div className="absolute inset-0">
         <ResponsiveContainer width="100%" height="100%">
-          <RechartsRadar cx="50%" cy="45%" outerRadius="65%" data={data}>
+          <RechartsRadar cx="50%" cy="50%" outerRadius="80%" data={data}>
             <PolarGrid stroke="hsl(var(--border))" />
             <PolarAngleAxis
               dataKey="metric"
@@ -71,9 +70,6 @@ export const BannerRadarChart = memo(function BannerRadarChart({
               />
             ))}
             <Tooltip contentStyle={TOOLTIP_STYLE} />
-            <Legend
-              wrapperStyle={{ fontSize: 11, fontFamily: "var(--font-inter)" }}
-            />
           </RechartsRadar>
         </ResponsiveContainer>
       </div>

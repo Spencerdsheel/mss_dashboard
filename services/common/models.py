@@ -173,6 +173,25 @@ class ProviderConnection:
 
 
 @dataclass(frozen=True)
+class DashboardLayout:
+    """Sprint 13a — project-level widget dashboard arrangement.
+
+    Project-level only (no per-user personal layouts — explicit user decision,
+    see sprint-13a spec §2). tenant_id is part of the composite PK with
+    project_id and is derived only from the project row's tenant, never from
+    the request (see .claude/rules/tenant-isolation.md).
+    """
+
+    tenant_id: str
+    project_id: str
+    layout: dict
+    page_key: str = "overview"
+    source: str = "manual"
+    updated_by: str | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class RunLog:
     id: str
     tenant_id: str

@@ -1,7 +1,8 @@
 import { assertProjectAccess } from "@/server/rbac";
-import { getProjectSummary } from "@/server/analytics";
+import { getProjectSummary, getDashboardLayout } from "@/server/analytics";
 import { getDashboardProvider } from "@/server/providers";
 import { OverviewGrid } from "./overview-grid";
+import { getAiLayoutGenerationEnabledAction } from "./dashboard-layout-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,15 @@ export default async function ProjectOverviewPage({
   // Summary + visits in parallel (listVisits still needed for charts). This
   // also removes the previous describeProject() call, which duplicated
   // getProjectSummary (both hit the same /summary endpoint).
-  const [summary, rawVisits] = await Promise.all([
+  const isAdmin = session.user.role === "PLATFORM_ADMIN" || session.user.role === "CLIENT_ADMIN";
+
+  const [summary, rawVisits, dashboardLayout, aiLayoutGenerationEnabled] = await Promise.all([
     getProjectSummary(projectId, token),
     provider.listVisits(),
+    getDashboardLayout(projectId, token),
+    // Sprint 19 §6.5: only admins ever see the AI-generate button, so only
+    // fetch the admin-only toggle setting for admin sessions.
+    isAdmin ? getAiLayoutGenerationEnabledAction() : Promise.resolve(true),
   ]);
 
   const visitRows = rawVisits.map((v) => ({
@@ -55,6 +62,10 @@ export default async function ProjectOverviewPage({
       metrics={summary.metrics}
       visitRows={visitRows}
       dailyVisits={dailyVisits}
+      photoByKind={summary.photoByKind}
+      layout={dashboardLayout.layout}
+      role={session.user.role}
+      aiLayoutGenerationEnabled={aiLayoutGenerationEnabled}
     />
   );
 }

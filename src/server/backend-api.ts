@@ -61,14 +61,36 @@ export async function backendPatch<T>(path: string, token: string, body: any) {
   });
 }
 
+// Sprint 13b: the dashboard-layout write path needs PUT (persist) and DELETE
+// (reset to default) — added here rather than inventing a parallel client.
+export async function backendPut<T>(path: string, token: string, body: any) {
+  return backendFetch<T>(path, {
+    method: "PUT",
+    token,
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+    authenticated: true,
+  });
+}
+
+export async function backendDelete(path: string, token: string): Promise<void> {
+  await backendFetch<void>(path, {
+    method: "DELETE",
+    token,
+    authenticated: true,
+    noContent: true,
+  });
+}
+
 async function backendFetch<T>(
   path: string,
   options: {
-    method: "GET" | "POST" | "PATCH";
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
     token?: string;
     body?: string;
     headers?: Record<string, string>;
     authenticated: boolean;
+    noContent?: boolean;
     cacheOptions?: {
       tags?: string[];
       revalidate?: number;
@@ -103,6 +125,9 @@ async function backendFetch<T>(
   const response = await fetch(`${baseUrl}${path}`, fetchOptions);
   if (!response.ok) {
     throw new Error(`Backend API ${path} failed: ${response.status}`);
+  }
+  if (options.noContent || response.status === 204) {
+    return undefined as T;
   }
   return (await response.json()) as T;
 }

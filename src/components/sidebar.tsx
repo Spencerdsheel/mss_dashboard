@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -19,15 +19,21 @@ import {
   History,
   Settings,
   LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from "lucide-react";
 import { logoutAction } from "@/app/dashboard/actions";
 import { SidebarItem } from "@/components/sidebar-item";
 import { SidebarGroup } from "@/components/sidebar-group";
-import { cn } from "@/lib/utils";
+import { cn, deriveUsername } from "@/lib/utils";
 
 const COLLAPSED_KEY = "sidebar-collapsed";
+// Sprint 16 §4.1: separate from COLLAPSED_KEY on purpose — width and
+// collapse state are independent (a user can resize while expanded, then
+// still collapse to the fixed 64px rail without losing their chosen width).
+const WIDTH_KEY = "sidebar-width";
+const COLLAPSED_WIDTH = 64;
+const DEFAULT_WIDTH = 240;
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 400;
 
 export interface SidebarProps {
   user: {
@@ -42,11 +48,18 @@ export interface SidebarProps {
 export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
   const [mounted, setMounted] = useState(false);
+  const [resizing, setResizing] = useState(false);
+  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem(COLLAPSED_KEY);
-    if (stored === "true") setCollapsed(true);
+    const storedCollapsed = localStorage.getItem(COLLAPSED_KEY);
+    if (storedCollapsed === "true") setCollapsed(true);
+    const storedWidth = Number(localStorage.getItem(WIDTH_KEY));
+    if (Number.isFinite(storedWidth) && storedWidth >= MIN_WIDTH && storedWidth <= MAX_WIDTH) {
+      setSidebarWidth(storedWidth);
+    }
     setMounted(true);
   }, []);
 
@@ -56,6 +69,53 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
     window.dispatchEvent(new Event("sidebar-toggle"));
   }, [collapsed, mounted]);
 
+  useEffect(() => {
+    // Sprint 16 §4.1: the header's collapse button (app-shell.tsx) toggles
+    // COLLAPSED_KEY directly and broadcasts "sidebar-toggle" — mirror that
+    // state back into this component so both stay in sync regardless of
+    // which side triggered the change.
+    const handler = () => {
+      setCollapsed(localStorage.getItem(COLLAPSED_KEY) === "true");
+    };
+    window.addEventListener("sidebar-toggle", handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener("sidebar-toggle", handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, []);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    if (collapsed) return;
+    e.preventDefault();
+    dragStateRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    setResizing(true);
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const drag = dragStateRef.current;
+      if (!drag) return;
+      const next = drag.startWidth + (moveEvent.clientX - drag.startX);
+      const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next));
+      setSidebarWidth(clamped);
+      window.dispatchEvent(new Event("sidebar-resize"));
+    };
+
+    const handleMouseUp = () => {
+      dragStateRef.current = null;
+      setResizing(false);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      setSidebarWidth((current) => {
+        localStorage.setItem(WIDTH_KEY, String(current));
+        window.dispatchEvent(new Event("sidebar-resize"));
+        return current;
+      });
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
   const projectMatch = pathname.match(/^\/dashboard\/projects\/([^/]+)/);
   const projectId = projectMatch?.[1];
 
@@ -63,7 +123,9 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
 
   const initial = (user.name || user.email || "?").trim().charAt(0).toUpperCase();
 
-  const width = collapsed ? "w-16" : "w-60";
+  const displayUsername = deriveUsername(user.email || user.name || "");
+
+  const currentWidth = collapsed ? COLLAPSED_WIDTH : sidebarWidth;
 
   return (
     <>
@@ -77,11 +139,12 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
 
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border bg-sidebar-bg transition-all duration-200",
-          width,
+          "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border bg-sidebar-bg",
+          !resizing && "transition-[width] duration-200",
           "hidden md:flex",
           mobileOpen && "!flex"
         )}
+        style={{ width: currentWidth }}
       >
         {/* User profile section */}
         <div
@@ -96,29 +159,13 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-foreground">
-                {user.name || user.email}
+                {displayUsername}
               </div>
               <div className="truncate text-xs text-muted-foreground">
                 {user.email}
               </div>
             </div>
           )}
-        </div>
-
-        {/* Collapse toggle */}
-        <div className={cn("flex px-3 py-2", collapsed && "justify-center px-2")}>
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-sidebar-hover hover:text-foreground"
-          >
-            {collapsed ? (
-              <PanelLeftOpen className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </button>
         </div>
 
         {/* Main nav */}
@@ -147,10 +194,10 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
                   collapsed={collapsed}
                 />
                 <SidebarItem
-                  href={`/dashboard/projects/${projectId}/geography`}
+                  href={`/dashboard/projects/${projectId}/locations`}
                   icon={Globe}
-                  label="Geography"
-                  isActive={pathname === `/dashboard/projects/${projectId}/geography`}
+                  label="Locations"
+                  isActive={pathname === `/dashboard/projects/${projectId}/locations`}
                   collapsed={collapsed}
                 />
                 <SidebarItem
@@ -256,6 +303,19 @@ export function Sidebar({ user, mobileOpen = false, onMobileClose }: SidebarProp
             />
           </form>
         </div>
+
+        {/* Sprint 16 §4.1: drag-to-resize handle on the sidebar's right edge.
+            Hidden while collapsed — the collapsed rail is a fixed 64px, not
+            resizable. */}
+        {!collapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize sidebar"
+            onMouseDown={handleResizeStart}
+            className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-primary/40 active:bg-primary/60"
+          />
+        )}
       </aside>
     </>
   );

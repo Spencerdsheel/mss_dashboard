@@ -184,6 +184,23 @@ export function SettingsClient({ settings, userRole }: SettingsClientProps) {
 
       {isAdmin && (
         <section className="card-ventriloc space-y-5 p-6 max-w-lg">
+          <h2 className="text-lg font-semibold tracking-tight">AI Features</h2>
+          <SettingField
+            label="Generate overview page (AI)"
+            settingKey="ai_layout_generation_enabled"
+            value={settings.ai_layout_generation_enabled ?? "true"}
+            type="select"
+            options={[
+              { value: "true", label: "Enabled" },
+              { value: "false", label: "Disabled" },
+            ]}
+            description="Platform-wide toggle for the AI-generated overview page feature in project dashboard editing. When disabled, the 'Generate overview page (AI)' button is hidden and the endpoint returns 403."
+          />
+        </section>
+      )}
+
+      {isAdmin && (
+        <section className="card-ventriloc space-y-5 p-6 max-w-lg">
           <h2 className="text-lg font-semibold tracking-tight">Support</h2>
           <SettingField
             label="Support Email"

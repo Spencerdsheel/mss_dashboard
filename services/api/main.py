@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from services.api.routes import admin, auth, health, projects
 from services.common.logging_config import setup_logging
 from services.common.postgres_repository import PostgresDashboardRepository
 from services.common.settings import load_settings
+from services.ingestion.migrate import run_migrations
 
 settings = load_settings()
 
@@ -38,6 +40,11 @@ if not settings.redis_url:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle: startup and shutdown events."""
+    # Startup: migrations must complete before the API opens its connection pool.
+    applied_migrations = await asyncio.to_thread(run_migrations, settings.database_url)
+    if applied_migrations:
+        logger.info("Applied database migrations: %s", ", ".join(applied_migrations))
+
     # Startup: initialize connection pool
     repository = get_repository()
     if isinstance(repository, PostgresDashboardRepository):

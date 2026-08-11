@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useCallback } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 // First segment = Signal Orange (success), rest = neutral Ventriloc tones
@@ -28,6 +28,21 @@ export const DonutChart = memo(function DonutChart({
   centerValue?: string;
 }) {
   const safe = data.filter((d) => d.value > 0);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  const handleEnter = useCallback((_: unknown, index: number) => {
+    setActiveIndex(index);
+  }, []);
+  const handleLeave = useCallback(() => {
+    setActiveIndex(null);
+  }, []);
+
+  const active = activeIndex != null ? safe[activeIndex] : undefined;
+  const displayLabel = active ? active.label : centerLabel;
+  const displayValue = active
+    ? `${active.value} (${total ? ((active.value / total) * 100).toFixed(1) : 0}%)`
+    : centerValue;
+
   return (
     <div className="relative h-full w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -55,22 +70,28 @@ export const DonutChart = memo(function DonutChart({
             paddingAngle={2}
             stroke="hsl(var(--card))"
             strokeWidth={2}
+            onMouseEnter={handleEnter}
+            onMouseLeave={handleLeave}
           >
             {safe.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              <Cell
+                key={i}
+                fill={COLORS[i % COLORS.length]}
+                opacity={activeIndex == null || activeIndex === i ? 1 : 0.4}
+              />
             ))}
           </Pie>
         </PieChart>
       </ResponsiveContainer>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          {centerLabel}
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground truncate max-w-[80%] text-center">
+          {displayLabel}
         </div>
         <div
           className="font-space-grotesk text-3xl text-foreground"
           style={{ letterSpacing: "-0.04em", lineHeight: 1 }}
         >
-          {centerValue}
+          {displayValue}
         </div>
       </div>
     </div>

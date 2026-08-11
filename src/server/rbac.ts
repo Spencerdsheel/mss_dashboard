@@ -7,12 +7,24 @@ import { getBackendSession } from "./backend-auth";
 import { backendGet } from "./backend-api";
 import { cookies } from "next/headers";
 import type { Role } from "@/types/role";
+import { deriveUsername } from "@/lib/utils";
 
 export type AuthSession = {
   user: {
     id: string;
     email: string;
     name: string;
+    /** Sprint 16 §4.2: derived display username (e.g. "#jdoe"), NOT a real
+     * backend field — see deriveUsername's own doc comment for the swap-in
+     * plan if a real username field is added later. */
+    username: string;
+    /** Sprint 16 §4.3: company display name for the header, resolved
+     * server-side from the caller's own verified JWT claims (never a request
+     * param). Null for PLATFORM_ADMIN sessions with no single resolvable
+     * company, or if the lookup fails — callers should fall back to
+     * `name`/email, never render blank (display-degradation fallback only,
+     * distinct from the dashboard's real-data red line). */
+    companyName: string | null;
     role: Role;
     clientId: string | null;
     tenantIds: string[];
@@ -27,11 +39,32 @@ export async function requireSession(): Promise<AuthSession> {
     redirect("/login");
   }
 
+  // Sprint 16 §4.3: company name is not present in the JWT itself (no
+  // network round-trip happens today decoding the cookie locally — see
+  // getBackendSession), so a single extra call to the existing, claims-only
+  // /auth/me endpoint is the cheapest way to get it without inventing a new
+  // tenant-id-accepting route. Failure here is a display-degradation
+  // fallback (§5 of the sprint spec), never a redirect/error — the header
+  // still renders using the user's name/email.
+  let companyName: string | null = null;
+  try {
+    const me = await backendGet<{ company_name: string | null }>(
+      "/auth/me",
+      backendSession.token
+    );
+    companyName = me.company_name ?? null;
+  } catch {
+    // Display-degradation only: swallow and fall back below.
+    companyName = null;
+  }
+
   return {
     user: {
       id: backendSession.user.id,
       email: backendSession.user.email,
       name: backendSession.user.email,
+      username: deriveUsername(backendSession.user.email),
+      companyName,
       role: backendSession.user.role as Role,
       clientId: backendSession.user.tenant_id,
       tenantIds: backendSession.user.tenant_ids,

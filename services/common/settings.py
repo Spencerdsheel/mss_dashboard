@@ -64,6 +64,13 @@ class Settings:
     # instead of request.client.host. Leave at 0 (default) when the service is
     # exposed directly or behind an untrusted proxy.
     trusted_proxy_count: int = 0
+    # Sprint 14: Anthropic API key for the AI dashboard-layout-suggestion
+    # feature (services/api/services/layout_suggestion.py). Env-only,
+    # distinct from jwt_secret and secret_encryption_key (api-boundary.md
+    # §5.5). None means the feature is unconfigured; the service function
+    # then raises an explicit "not configured" error rather than silently
+    # falling back to the deterministic default layout (sample-data.md §5.2).
+    anthropic_api_key: str | None = None
 
 
 def load_settings() -> Settings:
@@ -103,6 +110,7 @@ def load_settings() -> Settings:
             "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"
         ),
         trusted_proxy_count=int(os.getenv("TRUSTED_PROXY_COUNT", "0")),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
     if settings.environment.lower() == "production":
         if len(settings.jwt_secret) < 32 or settings.jwt_secret.startswith("dev-only"):

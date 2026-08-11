@@ -1,11 +1,11 @@
 import { assertProjectAccess } from "@/server/rbac";
-import { getProjectSummary } from "@/server/analytics";
+import { getProjectSummary, getDashboardLayout } from "@/server/analytics";
 import { getDashboardProvider } from "@/server/providers";
-import { GeographyGrid } from "./geography-grid";
+import { LocationsGrid } from "./locations-grid";
 
 export const dynamic = "force-dynamic";
 
-export default async function GeographyPage({
+export default async function LocationsPage({
   params,
 }: {
   params: Promise<{ projectId: string }>;
@@ -14,7 +14,7 @@ export default async function GeographyPage({
   const { session } = await assertProjectAccess(projectId);
   const token = session.user.accessToken;
 
-  const summary = await getProjectSummary(projectId, token);
+  const [summary, dashboardLayout] = await Promise.all([getProjectSummary(projectId, token), getDashboardLayout(projectId, token, "locations")]);
   const provider = getDashboardProvider("rest-api", token, projectId);
   await provider.describeProject();
 
@@ -35,11 +35,13 @@ export default async function GeographyPage({
   const visitsWithCity = Array.from(cityCounts.values()).reduce((a, b) => a + b, 0);
 
   return (
-    <GeographyGrid
+    <LocationsGrid
       projectId={projectId}
       locationData={locationData}
       totalVisits={summary.totalVisits}
       visitsWithCity={visitsWithCity}
+      layout={dashboardLayout.layout}
+      role={session.user.role}
     />
   );
 }

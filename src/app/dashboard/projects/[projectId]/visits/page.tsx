@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { VisitsTable } from "./visits-table";
 import { EvidenceStrip } from "@/components/charts/evidence-strip";
+import { VisitsKpiRow } from "./visits-kpi-row";
 import type { VisitFilters } from "@/server/providers/rest-api-provider";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,13 @@ export default async function VisitListPage({
 
   return (
     <div className="flex h-full flex-col overflow-hidden gap-3">
+      <VisitsKpiRow
+        totalVisits={summary.totalVisits}
+        uniqueStores={summary.uniqueStores}
+        minDate={summary.minDate}
+        maxDate={summary.maxDate}
+        rowsWithNoPhotos={summary.rowsWithNoPhotos}
+      />
       <EvidenceStrip
         photoByKind={summary.photoByKind}
         totalVisits={summary.totalVisits}

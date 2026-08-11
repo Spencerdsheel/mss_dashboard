@@ -201,3 +201,18 @@ body::before {
 *::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.5);
 }
+
+/* ── Sprint 16 §4.5: dark-theme date-picker icon fix ────────
+   Native <input type="date"> calendar-picker-indicator renders as a dark
+   glyph by default and doesn't auto-invert in dark mode. Scoped to the
+   `.date-range-input` class (not a bare global `input[type=date]` rule) so
+   it only affects inputs that opt in — currently just project-grid.tsx's
+   custom-range start/end pickers — in case another date input elsewhere
+   later relies on the browser default look. */
+.date-range-input::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+}
+
+.dark .date-range-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}

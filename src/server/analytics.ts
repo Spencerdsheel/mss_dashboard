@@ -1,4 +1,5 @@
 import { backendGet } from "./backend-api";
+import type { LayoutConfig } from "@/lib/dashboard-layout";
 
 export type DistributionEntry = { label: string; value: number; is_success: boolean };
 
@@ -36,4 +37,17 @@ export async function getProjectSummary(projectId: string, token: string) {
     metrics: summary.metrics,
     provider: null,
   };
+}
+
+/** Sprint 13a — GET /projects/{id}/dashboard-layout. `layout: null` means no
+ * stored layout exists; the caller renders DEFAULT_LAYOUT (an explicit
+ * deterministic default, not a sample-data fallback — see dashboard-layout.ts). */
+export async function getDashboardLayout(projectId: string, token: string, page = "overview") {
+  const result = await backendGet<{
+    layout: LayoutConfig | null;
+    source: string | null;
+    updated_at: string | null;
+  }>(`/projects/${projectId}/dashboard-layout/${page}`, token);
+
+  return result;
 }

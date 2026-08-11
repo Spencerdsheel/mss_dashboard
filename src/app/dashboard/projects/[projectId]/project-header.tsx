@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { usePathname, useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PillNav } from "@/components/ui/pill-nav";
-import { ArrowRight } from "lucide-react";
+import type { Role } from "@/types/role";
 
 interface ProjectHeaderProps {
   project: {
@@ -15,6 +14,7 @@ interface ProjectHeaderProps {
     startDate: string | Date;
     endDate: string | Date;
   };
+  role?: Role;
 }
 
 function fmtDate(d: string | Date): string {
@@ -22,15 +22,31 @@ function fmtDate(d: string | Date): string {
   return date.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
 }
 
-export function ProjectHeader({ project }: ProjectHeaderProps) {
+export function ProjectHeader({ project, role }: ProjectHeaderProps) {
   const params = useParams<{ projectId: string }>();
+  const pathname = usePathname();
   const base = `/dashboard/projects/${params.projectId}`;
 
   const navItems = [
     { label: "Overview", href: base, exact: true },
-    { label: "Geography", href: `${base}/geography` },
+    { label: "Locations", href: `${base}/locations` },
     { label: "Visits", href: `${base}/visits` },
   ];
+
+  const isAdmin = role === "PLATFORM_ADMIN" || role === "CLIENT_ADMIN";
+
+  // Sprint 16 §4.8: "Visit List" (a redundant second link to the same
+  // /visits route the "Visits" pill already covers) is removed and replaced
+  // with an "Edit dashboard" trigger. Only Overview has an editable
+  // WidgetGrid today (13a/13b) — Overview owns its own in-page edit-mode
+  // toggle (WidgetEditorToolbar, rendered inside overview-grid.tsx, which
+  // this sibling layout-level header has no state channel into). Geography
+  // and Visits have no widget grid yet (that's sprint 17, not implemented as
+  // of this sprint) — flagged judgment call: since 17 hasn't landed, those
+  // two render a disabled/tooltip'd placeholder per the spec's explicit
+  // ordering note, rather than building 17's functionality here.
+  const isOverview = pathname === base;
+  const hasWidgetGrid = isOverview; // true again once sprint 17 lands Geography (+ possibly Visits)
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
@@ -48,11 +64,16 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       </div>
       <div className="flex items-center gap-3">
         <PillNav items={navItems} />
-        <Link href={`${base}/visits`}>
-          <Button variant="brand" size="sm">
-            Visit List <ArrowRight className="ml-1 h-3.5 w-3.5" />
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!hasWidgetGrid}
+            title={hasWidgetGrid ? undefined : "Coming with widget-grid support"}
+          >
+            Edit dashboard
           </Button>
-        </Link>
+        )}
       </div>
     </div>
   );

@@ -82,13 +82,27 @@ async def logout(
 
 
 @router.get("/me")
-async def me(claims=Depends(get_current_claims)) -> dict:
+async def me(
+    claims=Depends(get_current_claims),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    # Sprint 16 §4.3: company display name for the header, resolved strictly
+    # from the caller's own verified JWT claim (claims.company_id) — never
+    # from a query/path param. PLATFORM_ADMIN sessions may have no single
+    # resolvable company (they can span tenants), so company_name stays null
+    # for them and the frontend falls back to a static "iSN Admin" label.
+    company_name: str | None = None
+    if claims.company_id:
+        company = await repository.get_company(claims.company_id)
+        company_name = company.name if company else None
+
     return {
         "user_id": claims.user_id,
         "email": claims.email,
         "role": claims.role.value,
         "tenant_id": claims.tenant_id,
         "project_ids": list(claims.project_ids),
+        "company_name": company_name,
     }
 
 

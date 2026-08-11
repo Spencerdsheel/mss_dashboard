@@ -8,7 +8,7 @@ export default async function ProjectLayout({
   children: React.ReactNode;
   params: Promise<{ projectId: string }>;
 }) {
-  await requireSession();
+  const session = await requireSession();
   const { projectId } = await params;
   const { project } = await assertProjectAccess(projectId);
 
@@ -22,7 +22,7 @@ export default async function ProjectLayout({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <ProjectHeader project={serializedProject} />
+      <ProjectHeader project={serializedProject} role={session.user.role} />
       <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
     </div>
   );

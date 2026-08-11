@@ -184,6 +184,12 @@ ON CONFLICT (key) DO NOTHING;
 INSERT INTO dashboard.platform_settings (key, value)
 VALUES ('support_url', '')
 ON CONFLICT (key) DO NOTHING;
+-- Sprint 19: platform-admin toggle for "Generate overview page (AI)".
+-- Seeded true (capability generally available by default) -- an admin who
+-- wants it off makes an active choice to disable, per spec §5.3.
+INSERT INTO dashboard.platform_settings (key, value)
+VALUES ('ai_layout_generation_enabled', 'true')
+ON CONFLICT (key) DO NOTHING;
 -- P1.4: Per-project campaign model — variable install slots (1–4)
 CREATE TABLE IF NOT EXISTS dashboard.project_install_slots (
     tenant_id TEXT NOT NULL,
@@ -258,6 +264,20 @@ CREATE TABLE IF NOT EXISTS dashboard.password_reset_tokens (
 
 CREATE INDEX IF NOT EXISTS dashboard_password_reset_user_idx
     ON dashboard.password_reset_tokens(user_id, expires_at DESC);
+
+-- Sprint 13a: project-level dashboard layouts (admins edit; all roles read)
+CREATE TABLE IF NOT EXISTS dashboard.dashboard_layouts (
+    tenant_id   TEXT NOT NULL,
+    project_id  TEXT NOT NULL,
+    page_key    TEXT NOT NULL DEFAULT 'overview',
+    layout_json JSONB NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'ai_suggested' (sprint 14) | 'default'
+    updated_by  TEXT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, project_id, page_key),
+    FOREIGN KEY (tenant_id, project_id)
+        REFERENCES dashboard.projects(tenant_id, project_id) ON DELETE CASCADE
+);
 
 CREATE OR REPLACE VIEW dashboard.vw_project_summary AS
 SELECT

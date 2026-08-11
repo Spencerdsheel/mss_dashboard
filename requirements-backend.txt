@@ -22,3 +22,5 @@ prometheus-fastapi-instrumentator>=5.11,<6
 python-dotenv>=1,<2
 celery[redis]>=5.3,<6
 sentry-sdk[fastapi]>=1.40,<2
+# Sprint 14: AI dashboard-layout suggestion (services/api/services/layout_suggestion.py)
+anthropic>=0.40,<1

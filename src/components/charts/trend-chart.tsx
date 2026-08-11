@@ -52,11 +52,21 @@ export const TrendChart = memo(function TrendChart({
     );
   }
 
+  // Sprint 18 §4.3: "Visits over Time" looked over-stretched at its
+  // col-span-8 default. Internal-only fix (preferred option 1, keeps
+  // DEFAULT_LAYOUT's frozen col-span-8 shape / 13a's pixel-parity contract
+  // intact): cap the chart's rendered width with a centered max-width
+  // wrapper so the card's grid footprint is unchanged but the plotted area
+  // doesn't stretch edge-to-edge, tighten the horizontal margins slightly,
+  // and thin out the X-axis tick density so data points aren't spread
+  // unnaturally thin across the full card width.
+  const tickInterval = data.length > 20 ? Math.ceil(data.length / 12) : "preserveStartEnd";
+
   return (
     <div className="relative h-full w-full min-h-0">
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 mx-auto w-full max-w-[720px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
             <defs>
               <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#ff682c" stopOpacity={0.18} />
@@ -77,7 +87,7 @@ export const TrendChart = memo(function TrendChart({
               axisLine={false}
               fontFamily="var(--font-inter)"
               tickFormatter={shortDate}
-              interval="preserveStartEnd"
+              interval={tickInterval}
             />
             <YAxis
               stroke="hsl(var(--muted-foreground))"

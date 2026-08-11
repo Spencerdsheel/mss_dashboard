@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import uuid4
 
 import asyncpg
 
 from .logging_config import get_logger
-from .models import AuthClaims, Company, DistributionEntry, InstallCategory, InstallSlot, Project, ProjectMetric, ProjectSummary, Role, RunLog, Tenant, User, Visit, VisitPhoto, resolve_role
+from .models import AuthClaims, Company, DashboardLayout, DistributionEntry, InstallCategory, InstallSlot, Project, ProjectMetric, ProjectSummary, Role, RunLog, Tenant, User, Visit, VisitPhoto, resolve_role
 from .repository import DashboardRepository, VisitFilters, seed_phase01_repository, to_client_visit_dict, to_public_dict
 from .secrets import encrypt_secret
 from .security import hash_password, hash_reset_token, verify_password, verify_reset_token, generate_reset_token
@@ -429,6 +429,83 @@ class PostgresDashboardRepository:
             rows_with_no_photos=rows_with_no_photos,
         )
 
+    async def get_dashboard_layout(self, claims: AuthClaims, project_id: str, page_key: str = "overview") -> DashboardLayout | None:
+        """Sprint 13a — read the stored project-level dashboard layout, if any.
+
+        Mirrors get_project_summary's scoping exactly: tenant is resolved via
+        tenant_scope(claims) + the scoped project lookup, never trusted from
+        the request. Returns None when no row exists (frontend renders
+        DEFAULT_LAYOUT — an explicit default, not a sample-data fallback).
+        """
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
+        row = await self._fetch_one_replica(
+            """
+            SELECT tenant_id, project_id, page_key, layout_json, source, updated_by, updated_at
+            FROM dashboard.dashboard_layouts
+            WHERE tenant_id = $1 AND project_id = $2 AND page_key = $3
+            """,
+            project.tenant_id,
+            project.id,
+            page_key,
+        )
+        if row is None:
+            return None
+        return dashboard_layout_from_row(row)
+
+    async def upsert_dashboard_layout(
+        self, claims: AuthClaims, project_id: str, layout_json: dict, source: str, updated_by: str, page_key: str = "overview"
+    ) -> DashboardLayout:
+        """Sprint 13b — persist (insert or replace) the project-level layout.
+
+        tenant_id resolved the same way as get_dashboard_layout — never from
+        the request. Callers (routes/admin.py) authorize CLIENT_ADMIN/PLATFORM_ADMIN
+        + company access before calling this.
+        """
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
+        row = await self._fetch_one(
+            """
+            INSERT INTO dashboard.dashboard_layouts
+                (tenant_id, project_id, page_key, layout_json, source, updated_by, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, now())
+            ON CONFLICT (tenant_id, project_id, page_key) DO UPDATE SET
+                layout_json = EXCLUDED.layout_json,
+                source = EXCLUDED.source,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = now()
+            RETURNING tenant_id, project_id, page_key, layout_json, source, updated_by, updated_at
+            """,
+            project.tenant_id,
+            project.id,
+            page_key,
+            json.dumps(layout_json),
+            source,
+            updated_by,
+        )
+        return dashboard_layout_from_row(row)
+
+    async def delete_dashboard_layout(self, claims: AuthClaims, project_id: str, page_key: str = "overview") -> None:
+        """Sprint 13b — "Reset to default": delete the stored row.
+
+        A subsequent get_dashboard_layout then returns None -> the frontend
+        falls back to DEFAULT_LAYOUT (explicit default, not sample data).
+        """
+        project = assert_project_access(
+            claims, await self.get_project(project_id, tenant_scope(claims))
+        )
+        await self._execute(
+            """
+            DELETE FROM dashboard.dashboard_layouts
+            WHERE tenant_id = $1 AND project_id = $2 AND page_key = $3
+            """,
+            project.tenant_id,
+            project.id,
+            page_key,
+        )
+
     async def list_visits(self, claims: AuthClaims, project_id: str) -> list[dict]:
         """List visits with photo_count computed.
 
@@ -538,7 +615,13 @@ class PostgresDashboardRepository:
             else:  # prev
                 scan_desc = not user_desc
                 op = ">" if user_desc else "<"
-            page_args.append(cursor["d"])
+            # cursor["d"] arrives as a plain ISO date string (the cursor is
+            # opaque JSON decoded at the route layer) — asyncpg's date codec
+            # requires a real date object (it calls .toordinal() on the
+            # bound param), so parse it here, matching the date.fromisoformat
+            # convention used for VisitFilters.date_from/date_to.
+            cursor_date = cursor["d"] if isinstance(cursor["d"], date) else date.fromisoformat(cursor["d"])
+            page_args.append(cursor_date)
             page_args.append(cursor["s"])
             d_idx = len(page_args) - 1
             s_idx = len(page_args)
@@ -1425,6 +1508,20 @@ def metric_from_row(row: dict[str, Any]) -> ProjectMetric:
         value=float(row["value"]),
         unit=row.get("unit"),
         category=row.get("category"),
+    )
+
+
+def dashboard_layout_from_row(row: dict[str, Any]) -> DashboardLayout:
+    raw_layout = row["layout_json"]
+    layout = json.loads(raw_layout) if isinstance(raw_layout, str) else raw_layout
+    return DashboardLayout(
+        tenant_id=str(row["tenant_id"]),
+        project_id=str(row["project_id"]),
+        layout=layout,
+        page_key=str(row.get("page_key") or "overview"),
+        source=str(row["source"]),
+        updated_by=row.get("updated_by"),
+        updated_at=row.get("updated_at"),
     )
 
 

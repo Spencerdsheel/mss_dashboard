@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Protocol
 
@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from .models import (
     AuthClaims,
     Company,
+    DashboardLayout,
     DistributionEntry,
     Project,
     ProjectMetric,
@@ -53,6 +54,14 @@ class DashboardRepository(Protocol):
     async def get_project(self, project_id: str, tenant_ids: list[str] | None) -> Project | None: ...
 
     async def get_project_summary(self, claims: AuthClaims, project_id: str) -> ProjectSummary: ...
+
+    async def get_dashboard_layout(self, claims: AuthClaims, project_id: str, page_key: str = "overview") -> DashboardLayout | None: ...
+
+    async def upsert_dashboard_layout(
+        self, claims: AuthClaims, project_id: str, layout_json: dict, source: str, updated_by: str, page_key: str = "overview"
+    ) -> DashboardLayout: ...
+
+    async def delete_dashboard_layout(self, claims: AuthClaims, project_id: str, page_key: str = "overview") -> None: ...
 
     async def list_visits(self, claims: AuthClaims, project_id: str) -> list[dict]: ...
 
@@ -167,6 +176,12 @@ class InMemoryDashboardRepository:
         self.run_logs = run_logs or []
         # Mutable metric-target store: (tenant_id, project_id, key) -> dict
         self._metric_store: dict[tuple[str, str, str], dict] = {}
+        # Sprint 13a/13b: mutable dashboard-layout store: (tenant_id, project_id) -> DashboardLayout
+        self._layout_store: dict[tuple[str, str, str], DashboardLayout] = {}
+        # Sprint 19: mutable per-instance settings overrides, layered over
+        # _SETTING_DEFAULTS -- lets tests set/unset ai_layout_generation_enabled
+        # without a live Postgres.
+        self._setting_overrides: dict[str, str] = {}
 
     async def authenticate_user(self, email: str, password: str) -> User | None:
         user = next((u for u in self.users if u.email.lower() == email.lower()), None)
@@ -244,6 +259,30 @@ class InMemoryDashboardRepository:
             photo_by_kind=photo_by_kind,
             rows_with_no_photos=rows_with_no_photos,
         )
+
+    async def get_dashboard_layout(self, claims: AuthClaims, project_id: str, page_key: str = "overview") -> DashboardLayout | None:
+        project = assert_project_access(claims, await self.get_project(project_id))
+        return self._layout_store.get((project.tenant_id, project.id, page_key))
+
+    async def upsert_dashboard_layout(
+        self, claims: AuthClaims, project_id: str, layout_json: dict, source: str, updated_by: str, page_key: str = "overview"
+    ) -> DashboardLayout:
+        project = assert_project_access(claims, await self.get_project(project_id))
+        layout = DashboardLayout(
+            tenant_id=project.tenant_id,
+            project_id=project.id,
+            layout=layout_json,
+            page_key=page_key,
+            source=source,
+            updated_by=updated_by,
+            updated_at=datetime.now(timezone.utc),
+        )
+        self._layout_store[(project.tenant_id, project.id, page_key)] = layout
+        return layout
+
+    async def delete_dashboard_layout(self, claims: AuthClaims, project_id: str, page_key: str = "overview") -> None:
+        project = assert_project_access(claims, await self.get_project(project_id))
+        self._layout_store.pop((project.tenant_id, project.id, page_key), None)
 
     async def list_visits(self, claims: AuthClaims, project_id: str) -> list[dict]:
         project = assert_project_access(claims, await self.get_project(project_id))
@@ -480,12 +519,16 @@ class InMemoryDashboardRepository:
     }
 
     async def get_platform_setting(self, key: str) -> str | None:
+        if key in self._setting_overrides:
+            return self._setting_overrides[key]
         return self._SETTING_DEFAULTS.get(key)
 
     async def get_platform_settings(self, keys: list[str]) -> dict[str, str]:
-        return {k: v for k, v in self._SETTING_DEFAULTS.items() if k in keys}
+        merged = {**self._SETTING_DEFAULTS, **self._setting_overrides}
+        return {k: v for k, v in merged.items() if k in keys}
 
     async def set_platform_setting(self, key: str, value: str) -> str:
+        self._setting_overrides[key] = value
         return value
 
     async def list_companies(self) -> list[Company]:

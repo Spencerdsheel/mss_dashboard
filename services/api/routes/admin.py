@@ -5,10 +5,17 @@ import re
 import asyncpg
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 
 from services.api.dependencies import get_current_claims, get_repository, get_settings
 from services.api.exceptions import AuthorizationError, ConflictError, NotFoundError
+from services.api.services.layout_suggestion import (
+    AiSuggestionFailedError,
+    AiSuggestionsNotConfiguredError,
+    suggest_layout,
+)
+from services.common.layout_schema import ALLOWED_LAYOUT_PAGES, LayoutConfigModel
+from services.common.freeform_layout_schema import FreeformLayoutConfigModel
 from services.common.models import Role
 from services.common.repository import DashboardRepository, to_public_dict
 from services.common.settings import Settings
@@ -20,7 +27,14 @@ _ALLOWED_ROLES = {r.value for r in Role}
 
 _PUBLIC_SETTINGS = {"site_title", "logo_text", "footer_text", "brand_color"}
 _APPEARANCE_SETTINGS = {"brand_color", "default_theme", "date_format"}
-_ADMIN_ONLY_SETTINGS = {"site_title", "logo_text", "footer_text", "support_email", "support_url"}
+_ADMIN_ONLY_SETTINGS = {
+    "site_title",
+    "logo_text",
+    "footer_text",
+    "support_email",
+    "support_url",
+    "ai_layout_generation_enabled",
+}
 _ALL_SETTINGS = _APPEARANCE_SETTINGS | _ADMIN_ONLY_SETTINGS
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -162,6 +176,18 @@ class CompanyCreateRequest(BaseModel):
 class CompanyUpdateRequest(BaseModel):
     name: str | None = None
     slug: str | None = None
+
+
+class DashboardLayoutUpdateRequest(BaseModel):
+    layout: dict
+    source: str = "manual"
+
+    @field_validator("source")
+    @classmethod
+    def _check_source(cls, v: str) -> str:
+        if v not in ("manual", "ai_suggested"):
+            raise ValueError("source must be 'manual' or 'ai_suggested'")
+        return v
 
 
 def require_admin_operation(repository: DashboardRepository, method_name: str):
@@ -638,6 +664,117 @@ async def update_project_metrics(
         return await method(project_id, [item.model_dump() for item in request.metrics])
     except ValueError as exc:
         raise NotFoundError(str(exc)) from exc
+
+
+@router.put("/projects/{project_id}/dashboard-layout/{page}")
+@router.put("/projects/{project_id}/dashboard-layout")
+async def update_dashboard_layout(
+    project_id: str,
+    request: DashboardLayoutUpdateRequest,
+    page: str = "overview",
+    claims=Depends(require_client_admin_or_above),
+    repository: DashboardRepository = Depends(get_repository),
+) -> dict:
+    """Sprint 13b — persist an admin-edited project-level dashboard layout.
+
+    CLIENT_ADMIN + PLATFORM_ADMIN only (require_client_admin_or_above rejects
+    TENANT_USER); _assert_company_access_to_project confirms the CLIENT_ADMIN's
+    company owns the project (PLATFORM_ADMIN short-circuits). The layout body
+    is untrusted input — validated against LayoutConfigModel (unknown widget
+    type / bad size / non-primitive params -> 422) before ever reaching the
+    repository.
+    """
+    if page not in ALLOWED_LAYOUT_PAGES:
+        raise HTTPException(status_code=422, detail=f"Unknown dashboard page: {page!r}")
+    await _assert_company_access_to_project(claims, project_id, repository)
+    try:
+        version = request.layout.get("version")
+        if version == 1:
+            validated = LayoutConfigModel.model_validate(request.layout)
+        elif version == 2:
+            validated = FreeformLayoutConfigModel.model_validate(request.layout)
+        else:
+            raise ValueError(f"Unsupported layout version: {version!r}")
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    layout = await repository.upsert_dashboard_layout(
+        claims, project_id, validated.model_dump(), request.source, claims.user_id, page
+    )
+    return {
+        "layout": layout.layout,
+        "source": layout.source,
+        "updated_at": layout.updated_at.isoformat() if layout.updated_at else None,
+    }
+
+
+@router.delete("/projects/{project_id}/dashboard-layout/{page}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete(
+    "/projects/{project_id}/dashboard-layout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+async def delete_dashboard_layout(
+    project_id: str,
+    page: str = "overview",
+    claims=Depends(require_client_admin_or_above),
+    repository: DashboardRepository = Depends(get_repository),
+) -> None:
+    """Sprint 13b — "Reset to default": delete the stored layout row.
+
+    A subsequent GET /projects/{id}/dashboard-layout then returns
+    `layout: null`, and the frontend falls back to DEFAULT_LAYOUT (an explicit
+    deterministic default, not a sample-data fallback — §5.2).
+    """
+    if page not in ALLOWED_LAYOUT_PAGES:
+        raise HTTPException(status_code=422, detail=f"Unknown dashboard page: {page!r}")
+    await _assert_company_access_to_project(claims, project_id, repository)
+    await repository.delete_dashboard_layout(claims, project_id, page)
+
+
+@router.post("/projects/{project_id}/dashboard-layout/suggest")
+async def suggest_dashboard_layout(
+    project_id: str,
+    claims=Depends(require_client_admin_or_above),
+    repository: DashboardRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Sprint 14/19 — one-time, admin-triggered "Generate overview page (AI)"
+    layout suggestion (preview only).
+
+    Thin handler: authorize -> check the platform toggle -> call the service
+    function -> return. The `anthropic` SDK import and the model call live
+    only in services/api/services/layout_suggestion.py (service-boundary +
+    api-boundary discipline). This endpoint never persists — the admin
+    applies the returned layout via the existing 13b PUT with
+    source="ai_suggested".
+
+    Sprint 19 §6.3: the platform-admin `ai_layout_generation_enabled` toggle
+    is checked BEFORE the ANTHROPIC_API_KEY-unset check, so an admin who
+    deliberately disabled the feature always sees the disabled message
+    (403), never the "not configured" message (503) — the two are
+    independently observable and distinctly worded, per the no-silent-
+    fallback red line. A None/unseeded setting value is treated as enabled
+    (matches the seed-default-true decision in spec §5.3).
+    """
+    await _assert_company_access_to_project(claims, project_id, repository)
+    get_setting_value = require_admin_operation(repository, "get_platform_setting")
+    enabled = await get_setting_value("ai_layout_generation_enabled")
+    if (enabled or "true").lower() == "false":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AI layout generation is disabled",
+        )
+    try:
+        layout = await suggest_layout(claims, project_id, repository, settings)
+    except AiSuggestionsNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI suggestions not configured",
+        ) from exc
+    except AiSuggestionFailedError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return {"layout": layout, "source": "ai_suggested"}
 
 
 @router.get("/settings")

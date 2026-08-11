@@ -53,6 +53,17 @@ export function formatPct(value: number, total: number): string {
   return `${Math.round((value / total) * 100)}%`;
 }
 
+// Sprint 16 §4.2: there is no distinct "username" concept in the backend
+// today (rbac.ts's AuthSession.name is just the email) — deriving a display
+// username from the email's local part is a judgment call, flagged in the
+// sprint handoff. If a real `username` field is added later, swap the call
+// site (sidebar.tsx reads this via one `displayUsername`-style value) rather
+// than this helper's signature/output shape.
+export function deriveUsername(email: string): string {
+  const local = email.split("@")[0] || email;
+  return `#${local}`;
+}
+
 export function hexToHsl(hex: string): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.substring(0, 2), 16) / 255;
